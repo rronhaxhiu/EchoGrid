@@ -1,0 +1,1 @@
+DOCKERIZE EVERYTHING, sipas mundsive
