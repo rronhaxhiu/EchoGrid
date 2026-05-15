@@ -92,6 +92,17 @@ async def log_requests(request: Request, call_next):
 app.include_router(router)
 
 
+@app.get("/", tags=["Health"])
+async def root():
+    """API index — use /docs for interactive API or run the Next.js app on :3000."""
+    return {
+        "name": "EchoGrid Simulation API",
+        "docs": "/docs",
+        "health": "/health",
+        "api": "/api/v1",
+    }
+
+
 @app.get("/health", tags=["Health"])
 async def health():
     return {
