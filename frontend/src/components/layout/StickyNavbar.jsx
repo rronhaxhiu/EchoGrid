@@ -65,13 +65,19 @@ export function StickyNavbar() {
               transition={{ duration: 0.28 }}
             >
               {navItems.map((item) => (
-                <a
-                  className="rounded-full px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-950/[0.05] hover:text-slate-950 dark:text-slate-300/78 dark:hover:bg-white/[0.08] dark:hover:text-white"
-                  href={item.href}
+                <Button
+                  asChild
+                  className={cn(
+                    "rounded-lg text-slate-600 dark:text-slate-300/80",
+                    item.label === "Home" &&
+                      "bg-secondary/80 text-secondary-foreground shadow-sm dark:bg-white/[0.08] dark:text-white",
+                  )}
                   key={item.label}
+                  size="sm"
+                  variant={item.label === "Home" ? "secondary" : "ghost"}
                 >
-                  {item.label}
-                </a>
+                  <a href={item.href}>{item.label}</a>
+                </Button>
               ))}
             </motion.div>
           ) : (
@@ -83,13 +89,15 @@ export function StickyNavbar() {
               transition={{ duration: 0.24 }}
             >
               {landingActions.map((item) => (
-                <a
-                  className="rounded-full border border-white/0 px-3 py-2 text-sm text-slate-600 transition hover:border-slate-950/10 hover:bg-white/50 hover:text-slate-950 dark:text-slate-200/80 dark:hover:border-white/12 dark:hover:bg-white/[0.08] dark:hover:text-white"
-                  href={item.href}
+                <Button
+                  asChild
+                  className="rounded-lg text-slate-600 hover:bg-white/55 hover:text-slate-950 dark:text-slate-200/80 dark:hover:bg-white/[0.08] dark:hover:text-white"
                   key={item.title}
+                  size="sm"
+                  variant="ghost"
                 >
-                  {item.title}
-                </a>
+                  <a href={item.href}>{item.title}</a>
+                </Button>
               ))}
             </motion.div>
           )}
@@ -99,12 +107,13 @@ export function StickyNavbar() {
           <ThemeToggle />
           <Button
             asChild
-            className="hidden rounded-full border-emerald-400/25 bg-emerald-300/15 text-emerald-700 shadow-lg shadow-emerald-500/10 hover:bg-emerald-300/25 dark:text-emerald-100 sm:inline-flex"
-            variant="outline"
+            className="hidden rounded-xl bg-slate-950/80 px-3.5 text-white shadow-lg shadow-slate-950/10 hover:bg-slate-950/90 dark:bg-white/[0.12] dark:text-white dark:shadow-black/20 dark:hover:bg-white/[0.18] sm:inline-flex"
+            size="lg"
+            variant="secondary"
           >
             <a href="#cta">
               Launch
-              <ArrowRight className="size-4" />
+              <ArrowRight className="size-4 text-emerald-300 transition group-hover/button:text-emerald-200" />
             </a>
           </Button>
         </div>

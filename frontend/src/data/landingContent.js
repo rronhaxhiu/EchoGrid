@@ -60,18 +60,21 @@ export const heroMetrics = [
 export const landingActions = [
   {
     title: "Launch Simulation",
+    description: "Start a new planetary scenario and explore live tile metrics.",
     href: "#cta",
     icon: "rocket",
     tone: "emerald",
   },
   {
     title: "History",
+    description: "Review previous simulations, compare outputs, and export results.",
     href: "#history",
     icon: "history",
     tone: "cyan",
   },
   {
     title: "View Team",
+    description: "See contributors, roles, and project responsibilities.",
     href: "#team",
     icon: "users",
     tone: "violet",
