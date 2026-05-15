@@ -1,0 +1,392 @@
+"""
+Framework-agnostic simulation service.
+
+All business logic lives here. FastAPI routes are thin wrappers that
+call these methods and map results to HTTP responses.
+
+Design:
+  - In-memory run store keyed by run_id.
+  - Optional async persistence via the repository layer.
+  - SimulationEngine is created once per run and kept alive.
+"""
+
+from typing import Any, Dict, List, Optional, Tuple
+
+from ..application.simulation_engine import SimulationEngine
+from ..application.world_initializer import WorldInitializer
+from ..domain.event import SimEvent
+from ..domain.influence import InfluenceMatrix
+from ..domain.run import SimulationRun
+from ..domain.variable import Variable
+from ..infrastructure.repositories import AbstractRunRepository, AbstractVariableRepository
+from ..infrastructure.serialization import RunSerializer
+
+
+class SimulationService:
+    def __init__(self, repository: AbstractRunRepository) -> None:
+        self._repo = repository
+        # Live engines keyed by run_id
+        self._engines: Dict[str, SimulationEngine] = {}
+
+    # ---------------------------------------------------------------------------
+    # Run lifecycle
+    # ---------------------------------------------------------------------------
+
+    async def create_run(
+        self,
+        seed: int,
+        hex_radius: int,
+        variables: List[str],
+        global_initial_values: Dict[str, float],
+        spatial_decay: float = 0.3,
+        influence_config: Optional[Dict[str, Dict[str, float]]] = None,
+        diff_snapshots: bool = True,
+    ) -> Dict[str, Any]:
+        run = SimulationRun.new(
+            seed=seed,
+            variables=variables,
+            global_initial_values=global_initial_values,
+            hex_radius=hex_radius,
+            spatial_decay=spatial_decay,
+            influence_config=influence_config or {},
+        )
+
+        run.world = WorldInitializer.create(
+            seed=seed,
+            hex_radius=hex_radius,
+            variables=variables,
+            global_initial_values=global_initial_values,
+        )
+
+        influence = InfluenceMatrix.from_dict(influence_config or {})
+        run.influence = influence
+
+        engine = SimulationEngine(run=run, diff_snapshots=diff_snapshots)
+        # Capture tick-0 full snapshot
+        tick0_snapshot = engine.take_full_snapshot()
+        run.snapshots.append(tick0_snapshot)
+
+        self._engines[run.id] = engine
+        await self._repo.save_run(run)
+        await self._repo.save_snapshot(tick0_snapshot)
+
+        return run.meta_dict()
+
+    async def list_runs(self, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        return await self._repo.list_runs(limit=limit, offset=offset)
+
+    async def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+        return run.meta_dict()
+
+    async def delete_run(self, run_id: str) -> bool:
+        self._engines.pop(run_id, None)
+        return await self._repo.delete_run(run_id)
+
+    # ---------------------------------------------------------------------------
+    # Tick execution
+    # ---------------------------------------------------------------------------
+
+    async def run_tick(self, run_id: str) -> Optional[Dict[str, Any]]:
+        engine = await self._get_engine(run_id)
+        if engine is None:
+            return None
+
+        snapshot = engine.tick()
+        await self._repo.save_run(engine.run)
+        await self._repo.save_snapshot(snapshot)
+
+        return {
+            "run_id": run_id,
+            "tick": engine.run.current_tick,
+            "global_state": engine.run.world.get_global_state(),
+            "snapshot_id": snapshot.id,
+            "is_diff": snapshot.is_diff,
+        }
+
+    async def run_n_ticks(self, run_id: str, n: int) -> Optional[Dict[str, Any]]:
+        engine = await self._get_engine(run_id)
+        if engine is None:
+            return None
+
+        snapshots = engine.run_ticks(n)
+        await self._repo.save_run(engine.run)
+        for snap in snapshots:
+            await self._repo.save_snapshot(snap)
+
+        return {
+            "run_id": run_id,
+            "ticks_run": n,
+            "current_tick": engine.run.current_tick,
+            "global_state": engine.run.world.get_global_state(),
+            "last_snapshot_id": snapshots[-1].id if snapshots else None,
+        }
+
+    # ---------------------------------------------------------------------------
+    # World / tile state
+    # ---------------------------------------------------------------------------
+
+    async def get_world_state(self, run_id: str) -> Optional[Dict[str, Any]]:
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+        return {
+            "run_id": run_id,
+            "tick": run.current_tick,
+            "global_state": run.world.get_global_state(),
+            "tile_count": len(run.world.tiles),
+            "tiles": run.world.snapshot(),
+        }
+
+    async def get_tile_state(self, run_id: str, q: int, r: int) -> Optional[Dict[str, Any]]:
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+        tile = run.world.tiles.get((q, r))
+        if tile is None:
+            return None
+        neighbors = run.world.get_neighbors(q, r)
+        return {
+            "q": q,
+            "r": r,
+            "variables": dict(tile.variables),
+            "neighbor_count": len(neighbors),
+        }
+
+    async def alter_tile(
+        self, run_id: str, q: int, r: int, variable: str, delta: float
+    ) -> Optional[Dict[str, Any]]:
+        engine = await self._get_engine(run_id)
+        if engine is None:
+            return None
+
+        tile = engine.run.world.tiles.get((q, r))
+        if tile is None or variable not in tile.variables:
+            return None
+
+        engine.alter_tile(q, r, variable, delta)
+        return {
+            "run_id": run_id,
+            "q": q,
+            "r": r,
+            "variable": variable,
+            "delta": delta,
+            "queued": True,
+        }
+
+    # ---------------------------------------------------------------------------
+    # Events
+    # ---------------------------------------------------------------------------
+
+    async def add_event(
+        self,
+        run_id: str,
+        tick: int,
+        name: str,
+        delta_map: Dict[str, float],
+        target_tiles: List[List[int]],
+        source: str = "user",
+    ) -> Optional[Dict[str, Any]]:
+        engine = await self._get_engine(run_id)
+        if engine is None:
+            return None
+
+        coords = [tuple(t) for t in target_tiles]
+        event = SimEvent(
+            tick=tick,
+            name=name,
+            delta_map=delta_map,
+            target_tiles=coords,  # type: ignore[arg-type]
+            source=source,  # type: ignore[arg-type]
+        )
+        engine.add_event(event)
+        await self._repo.save_event(run_id, event)
+
+        return {
+            "id": event.id,
+            "run_id": run_id,
+            "tick": event.tick,
+            "name": event.name,
+            "delta_map": event.delta_map,
+            "target_tiles": [list(c) for c in event.target_tiles],
+            "source": event.source,
+        }
+
+    async def list_events(self, run_id: str) -> Optional[List[Dict[str, Any]]]:
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+        return await self._repo.list_events(run_id)
+
+    # ---------------------------------------------------------------------------
+    # Snapshots
+    # ---------------------------------------------------------------------------
+
+    async def list_snapshots(self, run_id: str) -> Optional[List[Dict[str, Any]]]:
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+        return await self._repo.list_snapshots(run_id)
+
+    async def get_snapshot(self, run_id: str, tick: int) -> Optional[Dict[str, Any]]:
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+        return await self._repo.get_snapshot(run_id, tick)
+
+    # ---------------------------------------------------------------------------
+    # Influence
+    # ---------------------------------------------------------------------------
+
+    async def set_influence(
+        self, run_id: str, v1: str, v2: str, coefficient: float
+    ) -> Optional[Dict[str, Any]]:
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+        run.influence.set(v1, v2, coefficient)
+        run.influence_config = run.influence.to_dict()
+        await self._repo.save_run(run)
+        return {"run_id": run_id, "v1": v1, "v2": v2, "coefficient": coefficient}
+
+    # ---------------------------------------------------------------------------
+    # Export / replay
+    # ---------------------------------------------------------------------------
+
+    async def export_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+        return RunSerializer.export_run(run)
+
+    async def replay_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Reconstruct the run from seed + events (full deterministic replay).
+        Returns final global state.
+        """
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+
+        total_ticks = run.current_tick
+        event_log = list(run.event_log)
+
+        # Rebuild world from scratch
+        fresh_world = WorldInitializer.create(
+            seed=run.seed,
+            hex_radius=run.hex_radius,
+            variables=run.variables,
+            global_initial_values=run.global_initial_values,
+        )
+        fresh_run = SimulationRun.new(
+            seed=run.seed,
+            variables=run.variables,
+            global_initial_values=run.global_initial_values,
+            hex_radius=run.hex_radius,
+            spatial_decay=run.spatial_decay,
+            influence_config=run.influence_config,
+        )
+        fresh_run.world = fresh_world
+        fresh_run.influence = InfluenceMatrix.from_dict(run.influence_config)
+        fresh_run.event_log = event_log
+        fresh_run.pending_events = list(event_log)
+
+        engine = SimulationEngine(run=fresh_run, diff_snapshots=False)
+        engine.run_ticks(total_ticks)
+
+        return {
+            "run_id": run_id,
+            "replayed_ticks": total_ticks,
+            "final_global_state": fresh_run.world.get_global_state(),
+            "determinism_check": {
+                "original_tick": run.current_tick,
+                "replayed_tick": fresh_run.current_tick,
+            },
+        }
+
+    # ---------------------------------------------------------------------------
+    # Internal helpers
+    # ---------------------------------------------------------------------------
+
+    async def _load_run(self, run_id: str) -> Optional[SimulationRun]:
+        """Load run from engine cache or repository."""
+        engine = self._engines.get(run_id)
+        if engine is not None:
+            return engine.run
+        run = await self._repo.load_run(run_id)
+        if run is None:
+            return None
+        # Recreate engine for this run
+        engine = SimulationEngine(run=run, diff_snapshots=True)
+        self._engines[run_id] = engine
+        return run
+
+    async def _get_engine(self, run_id: str) -> Optional[SimulationEngine]:
+        if run_id not in self._engines:
+            run = await self._repo.load_run(run_id)
+            if run is None:
+                return None
+            self._engines[run_id] = SimulationEngine(run=run, diff_snapshots=True)
+        return self._engines[run_id]
+
+
+# ---------------------------------------------------------------------------
+# Variable catalog service
+# ---------------------------------------------------------------------------
+
+
+class VariableService:
+    def __init__(self, repository: AbstractVariableRepository) -> None:
+        self._repo = repository
+
+    async def create(
+        self,
+        name: str,
+        display_name: str,
+        description: str = "",
+        default_initial_value: float = 0.0,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
+        unit: str = "",
+    ) -> Dict[str, Any]:
+        existing = await self._repo.get_by_name(name)
+        if existing:
+            raise ValueError(f"Variable '{name}' already exists.")
+        variable = Variable(
+            name=name,
+            display_name=display_name,
+            description=description,
+            default_initial_value=default_initial_value,
+            min_value=min_value,
+            max_value=max_value,
+            unit=unit,
+        )
+        created = await self._repo.create(variable)
+        return created.to_dict()
+
+    async def list_all(self) -> List[Dict[str, Any]]:
+        variables = await self._repo.list_all()
+        return [v.to_dict() for v in variables]
+
+    async def get(self, variable_id: str) -> Optional[Dict[str, Any]]:
+        variable = await self._repo.get_by_id(variable_id)
+        return variable.to_dict() if variable else None
+
+    async def get_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        variable = await self._repo.get_by_name(name)
+        return variable.to_dict() if variable else None
+
+    async def update(self, variable_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        variable = await self._repo.get_by_id(variable_id)
+        if variable is None:
+            return None
+        for field, value in updates.items():
+            if value is not None:
+                setattr(variable, field, value)
+        updated = await self._repo.update(variable)
+        return updated.to_dict()
+
+    async def delete(self, variable_id: str) -> bool:
+        return await self._repo.delete(variable_id)
