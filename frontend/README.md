@@ -29,7 +29,7 @@ Legacy Three.js r58 and textures live under `public/globe/`:
 ## Usage
 
 1. Start the FastAPI backend.
-2. Open the UI and click **Demo run +12 ticks** if no runs exist.
-3. Pick a **run** and **variable**; scrub **Simulation time** to morph between snapshots (`globe.time`).
+2. Open http://localhost:3000 — fullscreen globe only (no controls).
+3. The app auto-loads the latest run (or creates a demo run) and renders a **dense land lattice** (~1.1° spacing) using [Natural Earth land](https://github.com/nvkelso/natural-earth-vector) to skip oceans. Hex tile variables are sampled onto land via inverse-distance weighting (`health` by default).
 
-Hex tiles `(q, r)` are projected to lat/lng for display; magnitude is the selected variable per tile.
+Adjust density in `src/components/echo-grid-dashboard.tsx` (`LAND_STEP_DEG` — lower = more points).
