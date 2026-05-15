@@ -24,8 +24,61 @@ function useHeroPassed() {
   return isCompact;
 }
 
+function getSectionId(href) {
+  return href.startsWith("#") ? href.slice(1) : href;
+}
+
+function useActiveSection(items) {
+  const [activeHref, setActiveHref] = useState("#home");
+
+  useEffect(() => {
+    const sectionIds = items.map((item) => getSectionId(item.href));
+
+    const handleScroll = () => {
+      const viewportOffset = window.innerHeight * 0.36;
+      const positionedSections = sectionIds
+        .map((id) => {
+          const element = document.getElementById(id);
+
+          if (!element) {
+            return null;
+          }
+
+          return {
+            href: `#${id}`,
+            top: element.getBoundingClientRect().top + window.scrollY,
+          };
+        })
+        .filter(Boolean)
+        .sort((first, second) => first.top - second.top);
+
+      const current = positionedSections.reduce(
+        (active, section) =>
+          window.scrollY + viewportOffset >= section.top ? section : active,
+        positionedSections[0],
+      );
+
+      if (current) {
+        setActiveHref(current.href);
+      }
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [items]);
+
+  return activeHref;
+}
+
 export function StickyNavbar() {
   const isCompact = useHeroPassed();
+  const activeHref = useActiveSection(navItems);
 
   return (
     <header className="fixed inset-x-0 top-4 z-50 px-4 sm:px-6">
@@ -69,14 +122,19 @@ export function StickyNavbar() {
                   asChild
                   className={cn(
                     "rounded-lg text-slate-600 dark:text-slate-300/80",
-                    item.label === "Home" &&
+                    activeHref === item.href &&
                       "bg-secondary/80 text-secondary-foreground shadow-sm dark:bg-white/[0.08] dark:text-white",
                   )}
                   key={item.label}
                   size="sm"
-                  variant={item.label === "Home" ? "secondary" : "ghost"}
+                  variant={activeHref === item.href ? "secondary" : "ghost"}
                 >
-                  <a href={item.href}>{item.label}</a>
+                  <a
+                    aria-current={activeHref === item.href ? "page" : undefined}
+                    href={item.href}
+                  >
+                    {item.label}
+                  </a>
                 </Button>
               ))}
             </motion.div>
@@ -91,12 +149,21 @@ export function StickyNavbar() {
               {landingActions.map((item) => (
                 <Button
                   asChild
-                  className="rounded-lg text-slate-600 hover:bg-white/55 hover:text-slate-950 dark:text-slate-200/80 dark:hover:bg-white/[0.08] dark:hover:text-white"
+                  className={cn(
+                    "rounded-lg text-slate-600 hover:bg-white/55 hover:text-slate-950 dark:text-slate-200/80 dark:hover:bg-white/[0.08] dark:hover:text-white",
+                    activeHref === item.href &&
+                      "bg-white/70 text-slate-950 shadow-sm dark:bg-white/[0.10] dark:text-white",
+                  )}
                   key={item.title}
                   size="sm"
-                  variant="ghost"
+                  variant={activeHref === item.href ? "secondary" : "ghost"}
                 >
-                  <a href={item.href}>{item.title}</a>
+                  <a
+                    aria-current={activeHref === item.href ? "page" : undefined}
+                    href={item.href}
+                  >
+                    {item.title}
+                  </a>
                 </Button>
               ))}
             </motion.div>

@@ -1,9 +1,11 @@
 export const navItems = [
   { label: "Home", href: "#home" },
-  { label: "Launch Simulation", href: "#cta" },
-  { label: "History", href: "#history" },
-  { label: "Team", href: "#team" },
   { label: "About", href: "#about" },
+  { label: "Features", href: "#features" },
+  { label: "History", href: "#history" },
+  { label: "Metrics", href: "#stats" },
+  { label: "Launch Simulation", href: "#cta" },
+  { label: "Team", href: "#team" },
 ];
 
 export const heroMetrics = [
