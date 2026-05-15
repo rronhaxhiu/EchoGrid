@@ -73,7 +73,7 @@ class SimulationRun:
             global_initial_values=global_initial_values,
             hex_radius=hex_radius,
             spatial_decay=spatial_decay,
-            influence_config=influence_config or {},
+            influence_config=influence_config or {},  # kept for persistence/replay
         )
 
     def meta_dict(self) -> dict:

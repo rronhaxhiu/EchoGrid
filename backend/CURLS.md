@@ -32,19 +32,31 @@ curl -s -X POST http://localhost:8000/api/v1/runs \
   -d '{
     "seed": 1337,
     "hex_radius": 8,
-    "variables": ["health", "economy", "green", "mobility"],
-    "global_initial_values": {
-      "health": 100.0,
-      "economy": 50.0,
-      "green": 60.0,
-      "mobility": 40.0
-    },
+    "variables": [
+      {"name": "health",   "initial_value": 100.0},
+      {"name": "economy",  "initial_value": 50.0},
+      {"name": "green",    "initial_value": 60.0},
+      {"name": "mobility", "initial_value": 40.0}
+    ],
     "spatial_decay": 0.3,
-    "influence_config": {
-      "economy": {"health": 0.10},
-      "green":   {"health": 0.05}
-    },
     "diff_snapshots": true
+  }' | jq
+```
+
+### Create a run with some variables disabled (null = excluded from run)
+```bash
+curl -s -X POST http://localhost:8000/api/v1/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "seed": 42,
+    "hex_radius": 5,
+    "variables": [
+      {"name": "health",   "initial_value": 100.0},
+      {"name": "economy",  "initial_value": 50.0},
+      {"name": "green",    "initial_value": null},
+      {"name": "mobility", "initial_value": null}
+    ],
+    "spatial_decay": 0.3
   }' | jq
 ```
 
@@ -248,10 +260,13 @@ RUN_ID=$(curl -s -X POST http://localhost:8000/api/v1/runs \
   -d '{
     "seed": 99,
     "hex_radius": 4,
-    "variables": ["health", "economy", "green", "mobility"],
-    "global_initial_values": {"health": 100, "economy": 50, "green": 60, "mobility": 40},
-    "spatial_decay": 0.3,
-    "influence_config": {"economy": {"health": 0.10}}
+    "variables": [
+      {"name": "health",   "initial_value": 100},
+      {"name": "economy",  "initial_value": 50},
+      {"name": "green",    "initial_value": 60},
+      {"name": "mobility", "initial_value": 40}
+    ],
+    "spatial_decay": 0.3
   }' | jq -r '.id')
 
 echo "Run ID: $RUN_ID"
