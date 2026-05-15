@@ -39,7 +39,6 @@ class SimulationService:
         variables: List[str],
         global_initial_values: Dict[str, float],
         spatial_decay: float = 0.3,
-        influence_config: Optional[Dict[str, Dict[str, float]]] = None,
         diff_snapshots: bool = True,
     ) -> Dict[str, Any]:
         run = SimulationRun.new(
@@ -48,7 +47,6 @@ class SimulationService:
             global_initial_values=global_initial_values,
             hex_radius=hex_radius,
             spatial_decay=spatial_decay,
-            influence_config=influence_config or {},
         )
 
         run.world = WorldInitializer.create(
@@ -58,8 +56,7 @@ class SimulationService:
             global_initial_values=global_initial_values,
         )
 
-        influence = InfluenceMatrix.from_dict(influence_config or {})
-        run.influence = influence
+        run.influence = InfluenceMatrix()
 
         engine = SimulationEngine(run=run, diff_snapshots=diff_snapshots)
         # Capture tick-0 full snapshot

@@ -88,13 +88,15 @@ def _tile_not_found(q: int, r: int) -> HTTPException:
 @router.post("/runs", response_model=RunMetaResponse, status_code=201, tags=["Runs"])
 async def create_run(body: CreateRunRequest, svc: SimulationService = Depends(get_service)):
     """Create and initialize a new simulation run."""
+    active_variables = [v for v in body.variables if v.initial_value is not None]
+    if not active_variables:
+        raise HTTPException(status_code=422, detail="At least one variable must have a non-null initial_value.")
     result = await svc.create_run(
         seed=body.seed,
         hex_radius=body.hex_radius,
-        variables=body.variables,
-        global_initial_values=body.global_initial_values,
+        variables=[v.name for v in active_variables],
+        global_initial_values={v.name: v.initial_value for v in active_variables},  # type: ignore[misc]
         spatial_decay=body.spatial_decay,
-        influence_config=body.influence_config,
         diff_snapshots=body.diff_snapshots,
     )
     return result

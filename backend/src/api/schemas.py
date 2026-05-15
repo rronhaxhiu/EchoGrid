@@ -3,7 +3,7 @@ Pydantic v2 request / response schemas for the simulation API.
 Kept intentionally thin — they just validate and shape data.
 """
 
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -13,39 +13,32 @@ from pydantic import BaseModel, Field, field_validator
 # ---------------------------------------------------------------------------
 
 
+class VariableInput(BaseModel):
+    name: str = Field(..., description="Variable name slug.")
+    initial_value: Optional[float] = Field(
+        None, description="Target global average at tick 0. Null means this variable is not used in the run."
+    )
+
+
 class CreateRunRequest(BaseModel):
     seed: int = Field(42, description="RNG seed for deterministic initialization.")
     hex_radius: int = Field(5, ge=1, le=50, description="Axial hex grid radius.")
-    variables: List[str] = Field(
-        default=["health", "economy", "green", "mobility"],
+    variables: List[VariableInput] = Field(
+        default=[
+            VariableInput(name="health", initial_value=100.0),
+            VariableInput(name="economy", initial_value=50.0),
+            VariableInput(name="green", initial_value=60.0),
+            VariableInput(name="mobility", initial_value=40.0),
+        ],
         min_length=1,
-        description="Variable names to track per tile.",
-    )
-    global_initial_values: Dict[str, float] = Field(
-        default={"health": 100.0, "economy": 50.0, "green": 60.0, "mobility": 40.0},
-        description="Target global average per variable at tick 0.",
+        description="Variables to track per tile. Items with null initial_value are excluded from the run.",
     )
     spatial_decay: float = Field(
         0.3, ge=0.0, le=1.0, description="Fraction of delta propagated to hex neighbors."
     )
-    influence_config: Dict[str, Dict[str, float]] = Field(
-        default_factory=dict,
-        description="Cross-variable influence matrix. influence[v1][v2] = coefficient.",
-    )
     diff_snapshots: bool = Field(
         True, description="Store diff snapshots (smaller) instead of full per tick."
     )
-
-    @field_validator("global_initial_values")
-    @classmethod
-    def check_initial_values_match_variables(
-        cls, v: Dict[str, float], info: Any
-    ) -> Dict[str, float]:
-        variables = info.data.get("variables", [])
-        for var in variables:
-            if var not in v:
-                v[var] = 0.0
-        return v
 
 
 class RunMetaResponse(BaseModel):

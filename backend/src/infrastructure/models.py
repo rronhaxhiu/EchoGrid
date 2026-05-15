@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -15,7 +15,7 @@ def _utcnow() -> datetime:
 class SimulationRunModel(Base):
     __tablename__ = "simulation_runs"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
     seed: Mapped[int] = mapped_column(Integer, nullable=False)
     variables: Mapped[dict] = mapped_column(JSONB, nullable=False)
     global_initial_values: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -43,9 +43,9 @@ class SimulationRunModel(Base):
 class SimEventModel(Base):
     __tablename__ = "sim_events"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
     run_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("simulation_runs.id", ondelete="CASCADE"), nullable=False
+        String, ForeignKey("simulation_runs.id", ondelete="CASCADE"), nullable=False
     )
     tick: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -62,9 +62,9 @@ class SimEventModel(Base):
 class SnapshotModel(Base):
     __tablename__ = "snapshots"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
     run_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("simulation_runs.id", ondelete="CASCADE"), nullable=False
+        String, ForeignKey("simulation_runs.id", ondelete="CASCADE"), nullable=False
     )
     tick: Mapped[int] = mapped_column(Integer, nullable=False)
     state: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -80,7 +80,7 @@ class VariableModel(Base):
     __tablename__ = "variables"
     __table_args__ = (UniqueConstraint("name", name="uq_variables_name"),)
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
