@@ -20,6 +20,13 @@ class VariableInput(BaseModel):
     )
 
 
+class VariableSpec(BaseModel):
+    """Type and range constraints for a simulation variable, used to sanitize tile values before ML inference."""
+    min_value: Optional[float] = Field(None, description="Minimum allowed value (clamp lower bound).")
+    max_value: Optional[float] = Field(None, description="Maximum allowed value (clamp upper bound).")
+    is_integer: bool = Field(False, description="If true, round value to nearest integer before inference.")
+
+
 class CreateRunRequest(BaseModel):
     seed: int = Field(42, description="RNG seed for deterministic initialization.")
     hex_radius: int = Field(5, ge=1, le=50, description="Axial hex grid radius.")
@@ -49,6 +56,13 @@ class CreateRunRequest(BaseModel):
             "Optional CSV data: each inner list is one row of numeric values, columns map to "
             "variables in order. Rows are randomly assigned to tiles (seeded); extra rows are "
             "sampled, missing tiles use global initial_value defaults."
+        ),
+    )
+    variable_specs: Optional[Dict[str, VariableSpec]] = Field(
+        None,
+        description=(
+            "Per-variable type and range constraints. Used to sanitize tile values "
+            "before ML inference (clamp to [min_value, max_value], round if is_integer)."
         ),
     )
 
@@ -315,3 +329,63 @@ class VariableResponse(BaseModel):
     unit: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# ML prediction (pest risk)
+# ---------------------------------------------------------------------------
+
+
+class PredictionSchemaResponse(BaseModel):
+    available: bool
+    feature_columns: List[str]
+    target: str
+    class_names: List[str]
+    backend: Optional[str] = None
+    label_encoding: Optional[Dict[str, int]] = None
+    error: Optional[str] = None
+
+
+class PredictionHealthResponse(BaseModel):
+    status: str
+    backend: str
+    detail: Optional[Any] = None
+    endpoint: Optional[str] = None
+
+
+class PredictInstancesRequest(BaseModel):
+    instances: List[Dict[str, float]] = Field(
+        ..., min_length=1, description="Rows with model feature_columns keys."
+    )
+    strict: bool = Field(
+        True, description="If true, reject rows missing required feature keys."
+    )
+
+
+class PredictInstancesResponse(BaseModel):
+    predictions: List[Dict[str, Any]]
+    errors: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class PredictRunTilesRequest(BaseModel):
+    model: Literal["xgb", "nn", "both"] = Field(
+        "nn", description="Which model output to emphasize on tiles."
+    )
+    write_to_tiles: bool = Field(
+        True, description="Write pest_risk_prob_* fields onto each tile."
+    )
+    strict: bool = Field(
+        False,
+        description="If true, skip tiles missing required feature columns.",
+    )
+    fill_missing: float = Field(
+        0.0, description="Default value for missing features when not strict."
+    )
+
+
+class PredictRunTilesResponse(BaseModel):
+    run_id: str
+    predictions: Dict[str, Any]
+    tile_errors: Dict[str, List[str]] = Field(default_factory=dict)
+    tiles_predicted: int
+    tiles_skipped: int

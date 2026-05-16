@@ -22,6 +22,7 @@ class SimulationRunModel(Base):
     hex_radius: Mapped[int] = mapped_column(Integer, nullable=False)
     spatial_decay: Mapped[float] = mapped_column(nullable=False, default=0.3)
     influence_config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    variable_specs: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True, default=dict)
     current_tick: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Full current world state for fast resumption (avoids full replay)
     current_world_state: Mapped[dict] = mapped_column(JSONB, nullable=True)

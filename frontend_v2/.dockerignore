@@ -1,0 +1,7 @@
+node_modules
+.next
+.git
+*.md
+tsconfig.tsbuildinfo
+.env*
+.DS_Store

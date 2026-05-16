@@ -12,6 +12,9 @@ import type {
   VariableResponse,
   CreateVariableRequest,
   SetInfluenceRequest,
+  PredictionSchemaResponse,
+  PredictRunTilesRequest,
+  PredictRunTilesResponse,
 } from "@/types/simulation";
 
 const BASE_URL =
@@ -123,6 +126,19 @@ export const api = {
     replay: (runId: string) =>
       request<Record<string, unknown>>(`/runs/${runId}/replay`, {
         method: "POST",
+      }),
+  },
+
+  prediction: {
+    schema: () => request<PredictionSchemaResponse>("/prediction/schema"),
+    health: () =>
+      request<{ status: string; backend: string; detail?: unknown }>(
+        "/prediction/health"
+      ),
+    predictTiles: (runId: string, body: PredictRunTilesRequest = {}) =>
+      request<PredictRunTilesResponse>(`/runs/${runId}/predict-tiles`, {
+        method: "POST",
+        body: JSON.stringify(body),
       }),
   },
 

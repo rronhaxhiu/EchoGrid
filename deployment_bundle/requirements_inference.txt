@@ -1,0 +1,7 @@
+# Pip deps for deploying `predict.py` + files in models/
+pandas>=2.0
+numpy>=1.23
+scikit-learn>=1.2
+joblib>=1.3
+torch>=2.0
+xgboost>=2.0

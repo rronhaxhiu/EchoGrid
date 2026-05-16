@@ -20,6 +20,7 @@ from ..domain.run import SimulationRun
 from ..domain.variable import Variable
 from ..infrastructure.repositories import AbstractRunRepository, AbstractVariableRepository
 from ..infrastructure.serialization import RunSerializer
+from ..ml.prediction_service import prediction_service
 
 # Default influence relationships applied when no explicit config is provided.
 # These give the simulation meaningful cross-variable dynamics out of the box.
@@ -51,6 +52,7 @@ class SimulationService:
         diff_snapshots: bool = True,
         influence_config: Optional[Dict[str, Dict[str, float]]] = None,
         csv_rows: Optional[List[List[float]]] = None,
+        variable_specs: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         run = SimulationRun.new(
             seed=seed,
@@ -59,6 +61,7 @@ class SimulationService:
             hex_radius=hex_radius,
             spatial_decay=spatial_decay,
         )
+        run.variable_specs = variable_specs or {}
 
         run.world = WorldInitializer.create(
             seed=seed,
@@ -383,6 +386,41 @@ class SimulationService:
         run.influence_config = run.influence.to_dict()
         await self._repo.save_run(run)
         return {"run_id": run_id, "v1": v1, "v2": v2, "coefficient": coefficient}
+
+    # ---------------------------------------------------------------------------
+    # ML prediction
+    # ---------------------------------------------------------------------------
+
+    async def predict_run_tiles(
+        self,
+        run_id: str,
+        model: str = "nn",
+        write_to_tiles: bool = True,
+        strict: bool = False,
+        fill_missing: float = 0.0,
+    ) -> Optional[Dict[str, Any]]:
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+
+        tiles_live = {
+            f"{q},{r}": tile.variables for (q, r), tile in run.world.tiles.items()
+        }
+        result = prediction_service.predict_tiles(
+            tiles_live,
+            model=model,  # type: ignore[arg-type]
+            write_to_tiles=write_to_tiles,
+            strict=strict,
+            fill_missing=fill_missing,
+            variable_specs=run.variable_specs or {},
+        )
+        if write_to_tiles:
+            await self._repo.save_run(run)
+
+        return {
+            "run_id": run_id,
+            **result,
+        }
 
     # ---------------------------------------------------------------------------
     # Export / replay

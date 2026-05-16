@@ -13,5 +13,13 @@ class Settings(BaseSettings):
     port: int = 8000
     reload: bool = False
 
+    # Pest-risk ML prediction (deployment_bundle)
+    prediction_backend: str = "local"  # local | http | vertex
+    pest_model_dir: Optional[str] = None
+    prediction_http_url: str = "http://localhost:8080"
+    vertex_project: Optional[str] = None
+    vertex_location: str = "us-central1"
+    vertex_endpoint_id: Optional[str] = None
+
 
 settings = Settings()

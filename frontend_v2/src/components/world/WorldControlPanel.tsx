@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Play, Square, Pause, RotateCcw,
   ChevronRight, Settings2, Globe2, Zap, Timer, CheckSquare, ExternalLink, Plus, Trash2,
@@ -18,8 +18,11 @@ import {
 } from "@/components/ui/select";
 import { useSimulationStore } from "@/store/simulationStore";
 import { cn, formatValue, getVariableMeta, getTileCount } from "@/lib/utils";
-import { parseCsv, buildVariableConfigsFromCsv } from "@/lib/csvImport";
+import { parseCsv, buildVariableConfigsFromCsv, headersMatchPestFeatures } from "@/lib/csvImport";
+import { PEST_MODEL_FEATURE_COLUMNS } from "@/lib/pestModelFeatures";
 import type { VariableConfig } from "@/types/simulation";
+import { DEFAULT_VARIABLE_CONFIGS } from "@/types/simulation";
+import { DEFAULT_INFLUENCE_MATRIX } from "@/store/simulationStore";
 
 const TICK_SPEEDS = [
   { label: "Slow", value: 2500 },
@@ -85,6 +88,10 @@ export function WorldControlPanel() {
     csvMeta,
     setCsvRows,
     setInfluenceMatrix,
+    predictionSchema,
+    predictionLoading,
+    fetchPredictionSchema,
+    predictRunTiles,
     startSimulation,
     stopSimulation,
     pauseSimulation,
@@ -100,6 +107,10 @@ export function WorldControlPanel() {
   const isActive = isRunning || isPaused;
 
   const tileCount = getTileCount(hexRadius);
+
+  useEffect(() => {
+    void fetchPredictionSchema();
+  }, [fetchPredictionSchema]);
 
   async function handleStart() {
     setIsLoading(true);
@@ -157,6 +168,16 @@ export function WorldControlPanel() {
     setVariableConfigs(variableConfigs.map(v => v.name === name ? { ...v, color } : v));
   }
 
+  function updateVariableSpec(name: string, spec: { min_value?: number | null; max_value?: number | null; is_integer?: boolean }) {
+    setVariableConfigs(variableConfigs.map(v => v.name === name ? { ...v, ...spec } : v));
+  }
+
+  function resetConfig() {
+    setVariableConfigs([...DEFAULT_VARIABLE_CONFIGS]);
+    setInfluenceMatrix({ ...DEFAULT_INFLUENCE_MATRIX });
+    setCsvRows(null, null);
+  }
+
   return (
     <div
       className={cn(
@@ -205,6 +226,8 @@ export function WorldControlPanel() {
               onRemoveVariable={removeVariable}
               onUpdateVariableName={updateVariableName}
               onUpdateColor={updateVariableColor}
+              onUpdateVariableSpec={updateVariableSpec}
+              onResetConfig={resetConfig}
               csvRows={csvRows}
               csvMeta={csvMeta}
               onCsvChange={setCsvRows}
@@ -213,6 +236,7 @@ export function WorldControlPanel() {
                 setInfluenceMatrix({});
                 if (configs[0]) setSelectedVariable(configs[0].name);
               }}
+              predictionSchema={predictionSchema}
               onStart={handleStart}
             />
           ) : (
@@ -230,6 +254,9 @@ export function WorldControlPanel() {
               onStop={stopSimulation}
               onSelectVariable={setSelectedVariable}
               onSpeedChange={setTickSpeed}
+              predictionSchema={predictionSchema}
+              predictionLoading={predictionLoading}
+              onPredictTiles={() => predictRunTiles({ write_to_tiles: true })}
             />
           )}
         </div>
@@ -258,7 +285,7 @@ function ConfigPanel({
   onHexRadiusChange, onSeedChange, onSpatialDecayChange,
   onToggleVariable, onUpdateInitialValue,
   onAddVariable, onRemoveVariable, onUpdateVariableName, onUpdateColor,
-  csvRows, csvMeta, onCsvChange, onVariableConfigsFromCsv, onStart,
+  csvRows, csvMeta, onCsvChange, onVariableConfigsFromCsv, predictionSchema, onUpdateVariableSpec, onResetConfig, onStart,
 }: {
   hexRadius: number; seed: number; spatialDecay: number;
   variableConfigs: VariableConfig[]; tileCount: number;
@@ -273,6 +300,8 @@ function ConfigPanel({
   onRemoveVariable: (name: string) => void;
   onUpdateVariableName: (name: string, newName: string) => void;
   onUpdateColor: (name: string, color: string) => void;
+  onUpdateVariableSpec: (name: string, spec: { min_value?: number | null; max_value?: number | null; is_integer?: boolean }) => void;
+  onResetConfig: () => void;
   csvRows: number[][] | null;
   csvMeta: { rowCount: number; columnCount: number; fileName: string } | null;
   onCsvChange: (
@@ -280,6 +309,7 @@ function ConfigPanel({
     meta?: { rowCount: number; columnCount: number; fileName: string } | null
   ) => void;
   onVariableConfigsFromCsv: (configs: VariableConfig[]) => void;
+  predictionSchema: import("@/types/simulation").PredictionSchemaResponse | null;
   onStart: () => void;
 }) {
   const [csvError, setCsvError] = useState<string | null>(null);
@@ -290,7 +320,14 @@ function ConfigPanel({
     setCsvInfo(null);
     try {
       const text = await file.text();
-      const parsed = parseCsv(text);
+      const required =
+        predictionSchema?.feature_columns?.length
+          ? predictionSchema.feature_columns
+          : [...PEST_MODEL_FEATURE_COLUMNS];
+      const peek = parseCsv(text, "simulation");
+      const isPestCsv =
+        !!peek.headers && headersMatchPestFeatures(peek.headers, required);
+      const parsed = isPestCsv ? parseCsv(text, "ml_raw") : peek;
       const configs = buildVariableConfigsFromCsv(parsed);
       onVariableConfigsFromCsv(configs);
       onCsvChange(parsed.rows, {
@@ -299,7 +336,9 @@ function ConfigPanel({
         fileName: file.name,
       });
       setCsvInfo(
-        `Created ${configs.length} variable(s): ${configs.map((c) => c.display_name).join(", ")}`
+        isPestCsv
+          ? `Pest dataset: ${configs.length} features (raw values, no 0–100 scaling)`
+          : `Created ${configs.length} variable(s): ${configs.map((c) => c.display_name).join(", ")}`
       );
     } catch (err) {
       onCsvChange(null, null);
@@ -337,13 +376,24 @@ function ConfigPanel({
                 </p>
               </div>
             </div>
-            <a
-              href="/runs"
-              className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 hover:underline w-fit"
-            >
-              <ExternalLink className="w-3 h-3" />
-              View in Runs history
-            </a>
+            <div className="flex items-center gap-3 flex-wrap">
+              <a
+                href="/runs"
+                className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 hover:underline w-fit"
+              >
+                <ExternalLink className="w-3 h-3" />
+                View in Runs history
+              </a>
+              <button
+                type="button"
+                onClick={onResetConfig}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-red-500 transition-colors w-fit"
+                title="Reset variables and CSV to defaults"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Clean start
+              </button>
+            </div>
           </div>
           <Separator />
         </>
@@ -462,19 +512,76 @@ function ConfigPanel({
                   </div>
                 </div>
                 {config.enabled && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground w-20">Initial avg</span>
-                    <Input
-                      type="number"
-                      value={config.initial_value}
-                      onChange={(e) =>
-                        onUpdateInitialValue(
-                          config.name,
-                          parseFloat(e.target.value) || 0
-                        )
-                      }
-                      className="h-7 text-xs"
-                    />
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-20">Initial avg</span>
+                      <Input
+                        type="number"
+                        value={config.initial_value}
+                        onChange={(e) =>
+                          onUpdateInitialValue(
+                            config.name,
+                            parseFloat(e.target.value) || 0
+                          )
+                        }
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    {csvRows && (
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <span className="text-xs text-muted-foreground w-20">Type</span>
+                        <div className="flex rounded-md overflow-hidden border border-border text-xs">
+                          <button
+                            type="button"
+                            onClick={() => onUpdateVariableSpec(config.name, { is_integer: true })}
+                            className={cn(
+                              "px-2 py-0.5 transition-colors",
+                              config.is_integer
+                                ? "bg-violet-600 text-white"
+                                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                            )}
+                          >
+                            Int
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateVariableSpec(config.name, { is_integer: false })}
+                            className={cn(
+                              "px-2 py-0.5 transition-colors",
+                              !config.is_integer
+                                ? "bg-violet-600 text-white"
+                                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                            )}
+                          >
+                            Float
+                          </button>
+                        </div>
+                        <span className="text-xs text-muted-foreground">Min</span>
+                        <Input
+                          type="number"
+                          value={config.min_value ?? ""}
+                          placeholder="–"
+                          onChange={(e) =>
+                            onUpdateVariableSpec(config.name, {
+                              min_value: e.target.value === "" ? null : parseFloat(e.target.value),
+                            })
+                          }
+                          className="h-7 text-xs w-16"
+                        />
+                        <span className="text-xs text-muted-foreground">Max</span>
+                        <Input
+                          type="number"
+                          value={config.max_value ?? ""}
+                          placeholder="–"
+                          onChange={(e) =>
+                            onUpdateVariableSpec(config.name, {
+                              max_value: e.target.value === "" ? null : parseFloat(e.target.value),
+                            })
+                          }
+                          className="h-7 text-xs w-16"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -608,6 +715,7 @@ function RunningPanel({
   activeRun, worldState, status, selectedVariable, tickSpeed, variableConfigs,
   isRunning, isPaused,
   onPause, onResume, onStop, onSelectVariable, onSpeedChange,
+  predictionSchema, predictionLoading, onPredictTiles,
 }: {
   activeRun: import("@/types/simulation").RunMeta | null;
   worldState: import("@/types/simulation").WorldStateResponse | null;
@@ -622,9 +730,19 @@ function RunningPanel({
   onStop: () => void;
   onSelectVariable: (v: string) => void;
   onSpeedChange: (ms: number) => void;
+  predictionSchema: import("@/types/simulation").PredictionSchemaResponse | null;
+  predictionLoading: boolean;
+  onPredictTiles: () => void;
 }) {
   const global = worldState?.global_state ?? {};
   const currentSpeed = TICK_SPEEDS.find((s) => s.value === tickSpeed) ?? TICK_SPEEDS[1];
+
+  const colorVarNames = [
+    ...new Set([
+      ...variableConfigs.map((v) => v.name),
+      ...Object.keys(global).filter((k) => k.startsWith("pest_risk")),
+    ]),
+  ];
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -684,6 +802,29 @@ function RunningPanel({
 
       <Separator />
 
+      {predictionSchema?.available && (
+        <>
+          <div className="space-y-2">
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Pest risk ML
+            </Label>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Run the model on every tile. Writes pest_risk_prob for globe coloring.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full gap-1.5"
+              disabled={predictionLoading}
+              onClick={onPredictTiles}
+            >
+              {predictionLoading ? "Predicting…" : "Predict pest risk"}
+            </Button>
+          </div>
+          <Separator />
+        </>
+      )}
+
       {/* Speed control */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
@@ -722,10 +863,11 @@ function RunningPanel({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {variableConfigs.map((v) => {
-              const meta = getVariableMeta(v.name, v);
+            {colorVarNames.map((name) => {
+              const config = variableConfigs.find((v) => v.name === name);
+              const meta = getVariableMeta(name, config);
               return (
-                <SelectItem key={v.name} value={v.name}>
+                <SelectItem key={name} value={name}>
                   <span className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full border border-border/50 shadow-sm" style={{ backgroundColor: meta.color }} />
                     <span>{meta.label}</span>

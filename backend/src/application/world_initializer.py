@@ -77,6 +77,45 @@ class WorldInitializer:
         return global_initial_values.get(var, 0.0)
 
     @staticmethod
+    def _stratified_sample(
+        csv_rows: List[List[float]],
+        variables: List[str],
+        n: int,
+        rng: random.Random,
+    ) -> List[List[float]]:
+        """
+        If a 'pest_risk' column exists, split rows into Low (0) and Medium (1) groups
+        and sample roughly half from each so tiles represent a balanced distribution.
+        Falls back to plain random sampling when the column is absent or only one class
+        is present.
+        """
+        if "pest_risk" not in variables:
+            return rng.sample(csv_rows, n) if len(csv_rows) >= n else list(csv_rows)
+
+        idx = variables.index("pest_risk")
+        group_0 = [r for r in csv_rows if r[idx] == 0.0]
+        group_1 = [r for r in csv_rows if r[idx] == 1.0]
+
+        if not group_0 or not group_1:
+            # Only one class present — fall back to plain sampling
+            return rng.sample(csv_rows, n) if len(csv_rows) >= n else list(csv_rows)
+
+        half = n // 2
+        pick_0 = rng.sample(group_0, min(half, len(group_0)))
+        pick_1 = rng.sample(group_1, min(n - len(pick_0), len(group_1)))
+        selected = pick_0 + pick_1
+
+        # Pad up to n if either group was too small
+        if len(selected) < n:
+            remaining = n - len(selected)
+            pool = [r for r in csv_rows if r not in selected]
+            pad = rng.sample(pool, min(remaining, len(pool))) if pool else []
+            selected = selected + pad
+
+        rng.shuffle(selected)
+        return selected
+
+    @staticmethod
     def create_from_csv_rows(
         seed: int,
         hex_radius: int,
@@ -87,20 +126,24 @@ class WorldInitializer:
         """
         Assign CSV rows to tiles at random (seeded).
 
+        If a 'pest_risk' column is present the selection is stratified: roughly half
+        the tiles receive Low-class rows and half receive Medium-class rows so that
+        the prediction produces a visible mix after the simulation starts.
+
         If there are more rows than tiles, sample one row per tile without replacement.
         If there are fewer rows than tiles, assign all rows and fill the rest with defaults.
         """
-        csv_rows = normalize_csv_rows_to_0_100(csv_rows)
         rng = random.Random(seed)
         coords = WorldInitializer.generate_hex_coords(hex_radius)
         n = len(coords)
         shuffled_coords = list(coords)
         rng.shuffle(shuffled_coords)
 
-        if len(csv_rows) >= n:
-            selected = rng.sample(csv_rows, n)
-        else:
-            selected = list(csv_rows)
+        # Stratify BEFORE normalization (raw pest_risk values are exactly 0 or 1)
+        selected_raw = WorldInitializer._stratified_sample(csv_rows, variables, n, rng)
+
+        # Normalize the selected rows to 0-100 for simulation storage
+        selected = normalize_csv_rows_to_0_100(selected_raw)
 
         tiles: Dict[Tuple[int, int], Tile] = {
             (q, r): Tile(q=q, r=r, variables={}) for (q, r) in coords

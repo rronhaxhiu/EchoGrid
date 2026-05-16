@@ -5,6 +5,12 @@ export interface VariableInput {
   initial_value: number | null;
 }
 
+export interface VariableSpec {
+  min_value?: number | null;
+  max_value?: number | null;
+  is_integer?: boolean;
+}
+
 export interface CreateRunRequest {
   seed: number;
   hex_radius: number;
@@ -14,6 +20,8 @@ export interface CreateRunRequest {
   influence_config?: Record<string, Record<string, number>>;
   /** CSV rows: each inner array is one row, columns map to variables in order. */
   csv_rows?: number[][];
+  /** Per-variable type + range constraints used to sanitize tile values before ML inference. */
+  variable_specs?: Record<string, VariableSpec>;
 }
 
 export interface RunMeta {
@@ -158,6 +166,44 @@ export interface VariableConfig {
   enabled: boolean;
   color: string;
   icon: string;
+  /** ML data spec: type and range for pre-prediction sanitization */
+  min_value?: number | null;
+  max_value?: number | null;
+  is_integer?: boolean;
+}
+
+export interface PredictionSchemaResponse {
+  available: boolean;
+  feature_columns: string[];
+  target: string;
+  class_names: string[];
+  backend?: string | null;
+  label_encoding?: Record<string, number>;
+  error?: string | null;
+}
+
+export interface PredictRunTilesRequest {
+  model?: "xgb" | "nn" | "both";
+  write_to_tiles?: boolean;
+  strict?: boolean;
+  fill_missing?: number;
+}
+
+export interface PredictRunTilesResponse {
+  run_id: string;
+  predictions: Record<
+    string,
+    {
+      label?: string;
+      probability_medium?: number;
+      model?: string;
+      xgb?: { label: string; probability_medium: number };
+      nn?: { label: string; probability_medium: number };
+    }
+  >;
+  tile_errors: Record<string, string[]>;
+  tiles_predicted: number;
+  tiles_skipped: number;
 }
 
 export const DEFAULT_VARIABLE_CONFIGS: VariableConfig[] = [
