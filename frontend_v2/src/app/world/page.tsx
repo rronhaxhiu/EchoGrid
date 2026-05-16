@@ -2,14 +2,17 @@
 
 import dynamic from "next/dynamic";
 import { useState } from "react";
-import { Pause, Play, CheckSquare } from "lucide-react";
+import { Pause, Play, CheckSquare, Globe2, Bug, Trees, Layers3 } from "lucide-react";
 import { WorldControlPanel } from "@/components/world/WorldControlPanel";
 import { GlobalMetrics } from "@/components/world/GlobalMetrics";
 import { TileEditor } from "@/components/world/TileEditor";
 import { useSimulationStore } from "@/store/simulationStore";
 import { cn } from "@/lib/utils";
+import type {
+  GlobeSurfaceMode,
+  GlobeVisualizationMode,
+} from "@/components/globe/HexGlobe";
 
-// Three.js requires client-side only
 const HexGlobe = dynamic(
   () => import("@/components/globe/HexGlobe").then((m) => ({ default: m.HexGlobe })),
   { ssr: false, loading: () => <GlobePlaceholder /> }
@@ -33,24 +36,22 @@ interface TileInfo {
 }
 
 export default function WorldPage() {
-  const { worldState, selectedVariable, hexRadius, status, activeRun } =
-    useSimulationStore();
+  const { worldState, selectedVariable, hexRadius, status } = useSimulationStore();
 
   const [tileInfo, setTileInfo] = useState<TileInfo | null>(null);
   const [autoRotate, setAutoRotate] = useState(true);
+  const [surfaceMode, setSurfaceMode] = useState<GlobeSurfaceMode>("globe");
+  const [visualizationMode, setVisualizationMode] =
+    useState<GlobeVisualizationMode>("parameter");
   const isActive = status === "running" || status === "paused";
   const isStopped = status === "stopped";
 
   const tiles = worldState?.tiles ?? {};
-
-  // Keep tile editor variables live: look up from the latest world state on
-  // every render rather than using the stale snapshot captured at click time.
   const liveTileVariables =
     tileInfo ? (tiles[`${tileInfo.q},${tileInfo.r}`] ?? tileInfo.variables) : null;
 
   return (
     <div className="fixed inset-0 pt-16 overflow-hidden bg-[#050410] dark:bg-[#050410]">
-      {/* Globe fills the whole background */}
       <div className="absolute inset-0 pt-16">
         <HexGlobe
           tiles={tiles}
@@ -58,19 +59,63 @@ export default function WorldPage() {
           hexRadius={hexRadius}
           isAnimating={status === "running"}
           autoRotate={autoRotate}
+          surfaceMode={surfaceMode}
+          visualizationMode={visualizationMode}
           selectedTileKey={tileInfo ? `${tileInfo.q},${tileInfo.r}` : null}
           onTileClick={(q, r, variables) => setTileInfo({ q, r, variables })}
         />
       </div>
 
-      {/* Top metrics bar (when simulation is active) */}
+      {(isActive || Object.keys(tiles).length > 0) && (
+        <div className="absolute top-20 left-6 z-20 space-y-3">
+          <div className="rounded-2xl border border-white/10 bg-black/55 p-2 backdrop-blur-xl shadow-xl">
+            <div className="mb-2 px-2 text-[11px] uppercase tracking-[0.24em] text-white/45">
+              Surface
+            </div>
+            <div className="flex items-center gap-2">
+              <ToggleChip
+                active={surfaceMode === "globe"}
+                icon={Globe2}
+                label="Globe view"
+                onClick={() => setSurfaceMode("globe")}
+              />
+              <ToggleChip
+                active={surfaceMode === "field"}
+                icon={Layers3}
+                label="Field view"
+                onClick={() => setSurfaceMode("field")}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/55 p-2 backdrop-blur-xl shadow-xl">
+            <div className="mb-2 px-2 text-[11px] uppercase tracking-[0.24em] text-white/45">
+              Visualization
+            </div>
+            <div className="flex items-center gap-2">
+              <ToggleChip
+                active={visualizationMode === "parameter"}
+                icon={Layers3}
+                label="Parameter lift"
+                onClick={() => setVisualizationMode("parameter")}
+              />
+              <ToggleChip
+                active={visualizationMode === "pest"}
+                icon={visualizationMode === "pest" ? Trees : Bug}
+                label="Pest risk + grass"
+                onClick={() => setVisualizationMode("pest")}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {isActive && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20">
           <GlobalMetrics />
         </div>
       )}
 
-      {/* Stopped state — top banner showing run is over */}
       {isStopped && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 animate-fade-in">
           <div className="flex items-center gap-3 bg-black/70 backdrop-blur-xl border border-amber-400/30 rounded-2xl px-5 py-2.5 shadow-2xl">
@@ -91,7 +136,6 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* Idle state overlay (when no simulation has run yet) */}
       {status === "idle" && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none pt-16">
           <div className="text-center space-y-3 animate-fade-in">
@@ -106,7 +150,6 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* Tile editor */}
       {tileInfo && liveTileVariables && (
         <div className="absolute bottom-8 left-8 z-20">
           <TileEditor
@@ -118,7 +161,6 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* Legend — visible when simulation is active or has just ended */}
       {(isActive || isStopped) && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
           <div
@@ -130,10 +172,20 @@ export default function WorldPage() {
             )}
           >
             <span className="text-xs text-white/60">Low</span>
-            <div className="w-28 h-1.5 rounded-full bg-gradient-to-r from-[#EF4444] via-[#FBBF24] to-[#34D399]" />
+            <div
+              className={cn(
+                "w-28 h-1.5 rounded-full",
+                visualizationMode === "pest"
+                  ? "bg-gradient-to-r from-[#22C55E] via-[#FACC15] to-[#EF4444]"
+                  : "bg-gradient-to-r from-[#EF4444] via-[#FBBF24] to-[#34D399]"
+              )}
+            />
             <span className="text-xs text-white/60">High</span>
             <span className="text-xs text-white/50 capitalize font-medium ml-1">
-              {selectedVariable}
+              {visualizationMode === "pest" ? "pest risk" : selectedVariable}
+            </span>
+            <span className="text-xs text-cyan-300/60 font-medium">
+              {surfaceMode === "globe" ? "globe" : "field"}
             </span>
             {isStopped && (
               <span className="text-xs text-amber-400/60 font-medium ml-1">
@@ -144,12 +196,10 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* Control panel — right side, vertically centered */}
       <div className="absolute right-6 top-1/2 -translate-y-1/2 z-30 flex items-center">
         <WorldControlPanel />
       </div>
 
-      {/* Auto-rotate toggle — bottom-right corner */}
       <div className="absolute bottom-8 right-6 z-20">
         <button
           onClick={() => setAutoRotate((v) => !v)}
@@ -170,5 +220,32 @@ export default function WorldPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+function ToggleChip({
+  active,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: typeof Globe2;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium border transition-all",
+        active
+          ? "border-cyan-300/30 bg-cyan-400/15 text-cyan-100 shadow-lg shadow-cyan-950/30"
+          : "border-white/10 bg-white/5 text-white/65 hover:text-white hover:border-white/20"
+      )}
+    >
+      <Icon className="w-3.5 h-3.5" />
+      {label}
+    </button>
   );
 }
