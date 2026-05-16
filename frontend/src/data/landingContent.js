@@ -4,7 +4,7 @@ export const navItems = [
   { label: "Features", href: "#features" },
   { label: "History", href: "#history" },
   { label: "Metrics", href: "#stats" },
-  { label: "Launch Simulation", href: "#cta" },
+  { label: "Launch Simulation", href: "/world" },
   { label: "Team", href: "#team" },
 ];
 
@@ -63,7 +63,7 @@ export const landingActions = [
   {
     title: "Launch Simulation",
     description: "Start a new planetary scenario and explore live tile metrics.",
-    href: "#cta",
+    href: "/world",
     icon: "rocket",
     tone: "emerald",
   },
@@ -175,7 +175,7 @@ export const stats = [
 ];
 
 export const footerLinks = [
-  { label: "Launch", href: "#cta" },
+  { label: "Launch", href: "/world" },
   { label: "History", href: "#history" },
   { label: "Team", href: "#team" },
   { label: "About", href: "#about" },

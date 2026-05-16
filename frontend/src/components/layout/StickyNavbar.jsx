@@ -178,7 +178,7 @@ export function StickyNavbar() {
             size="lg"
             variant="secondary"
           >
-            <a href="#cta">
+            <a href="/world">
               Launch
               <ArrowRight className="size-4 text-emerald-300 transition group-hover/button:text-emerald-200" />
             </a>

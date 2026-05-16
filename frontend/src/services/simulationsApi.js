@@ -20,6 +20,10 @@ export function getWorldState(runId) {
   return apiRequest(`/api/v1/runs/${runId}/state`);
 }
 
+export function getTileState(runId, q, r) {
+  return apiRequest(`/api/v1/runs/${runId}/tiles/${q}/${r}`);
+}
+
 export function listVariables() {
   return apiRequest("/api/v1/variables");
 }

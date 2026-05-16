@@ -36,7 +36,7 @@ export function CTASection() {
             className="h-11 rounded-full bg-slate-950 px-5 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-cyan-50"
             size="lg"
           >
-            <a href="#home">
+            <a href="/world">
               Launch Simulation
               <ArrowRight className="size-4" />
             </a>
