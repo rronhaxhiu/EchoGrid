@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Globe, Activity, Settings, Layers } from "lucide-react";
+import { Globe, Activity, Settings, Layers, Bug } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { cn } from "@/lib/utils";
 
 const navItems = [
+  { href: "/predictions", label: "Predictions", icon: Bug },
   { href: "/world", label: "World", icon: Globe },
   { href: "/runs", label: "Runs", icon: Activity },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -27,8 +28,8 @@ export function Navbar() {
             <Layers className="w-4 h-4 text-white" />
           </div>
           <span className="font-bold text-lg tracking-tight">
-            <span className="text-violet-600 dark:text-violet-400">Hex</span>
-            <span className="text-foreground">World</span>
+            <span className="text-violet-600 dark:text-violet-400">Echo</span>
+            <span className="text-foreground">Grid</span>
           </span>
         </Link>
 
