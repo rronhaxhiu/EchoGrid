@@ -1,6 +1,0 @@
-{
-  "/page": "app/page.js",
-  "/world/page": "app/world/page.js",
-  "/runs/page": "app/runs/page.js",
-  "/settings/page": "app/settings/page.js"
-}
