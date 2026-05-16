@@ -10,49 +10,6 @@ import { getVariableMeta, cn, formatValue } from "@/lib/utils";
 import { useSimulationStore, DEFAULT_INFLUENCE_MATRIX } from "@/store/simulationStore";
 
 export default function SettingsPage() {
-<<<<<<< HEAD
-  const { activeRun, status, variableConfigs } = useSimulationStore();
-  const isLocked = !activeRun || status === "running";
-  const [matrix, setMatrix] = useState<Record<string, Record<string, number>>>(DEFAULT_INFLUENCE);
-  const [variables, setVariables] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Load from active run if available
-  useEffect(() => {
-    if (activeRun) {
-      setVariables(activeRun.variables);
-      if (Object.keys(activeRun.influence_config).length > 0) {
-        setMatrix(activeRun.influence_config);
-      } else {
-        // Init empty matrix
-        const empty: Record<string, Record<string, number>> = {};
-        activeRun.variables.forEach((v) => {
-          empty[v] = {};
-          activeRun.variables.forEach((v2) => {
-            if (v !== v2) empty[v][v2] = 0;
-          });
-        });
-        setMatrix(empty);
-      }
-    } else {
-      const activeVars = variableConfigs.filter(v => v.enabled).map(v => v.name);
-      setVariables(activeVars);
-      
-      const empty: Record<string, Record<string, number>> = {};
-      activeVars.forEach((v) => {
-        empty[v] = {};
-        activeVars.forEach((v2) => {
-          if (v !== v2) {
-             empty[v][v2] = DEFAULT_INFLUENCE[v]?.[v2] ?? 0;
-          }
-        });
-      });
-      setMatrix(empty);
-    }
-  }, [activeRun, variableConfigs]);
-=======
   const { activeRun, influenceMatrix, setInfluenceMatrix, variableConfigs } =
     useSimulationStore();
 
@@ -66,7 +23,6 @@ export default function SettingsPage() {
   const variables = activeRun
     ? activeRun.variables
     : variableConfigs.filter((v) => v.enabled).map((v) => v.name);
->>>>>>> 4cba29d79fddc513ccad76103273d0e0d4059ab0
 
   function updateCell(from: string, to: string, value: number) {
     setDraft((prev) => ({
@@ -142,31 +98,13 @@ export default function SettingsPage() {
         </div>
       </div>
 
-<<<<<<< HEAD
-      {/* Run state notice */}
-      {activeRun && status === "running" ? (
-=======
       {/* Status banner */}
       {isLocked ? (
->>>>>>> 4cba29d79fddc513ccad76103273d0e0d4059ab0
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/10 dark:border-red-800/50 p-4 flex items-center gap-3 animate-fade-in">
           <Lock className="w-4 h-4 text-red-500 dark:text-red-400 shrink-0" />
           <p className="text-sm text-red-700 dark:text-red-400">
             The influence matrix is <strong>locked</strong> while run{" "}
-<<<<<<< HEAD
-            <span className="font-mono font-bold">{activeRun.id.slice(0, 8)}...</span>
-            {" "}is running. Pause the simulation to make changes.
-          </p>
-        </div>
-      ) : !activeRun ? (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-800/50 p-4 flex items-center gap-3 animate-fade-in">
-          <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-          <p className="text-sm text-amber-700 dark:text-amber-400">
-            No active simulation. Start one from the{" "}
-            <a href="/world" className="underline font-medium">World page</a>{" "}
-            to apply these settings to a run.
-=======
-            <span className="font-mono font-bold">{activeRun.id.slice(0, 8)}…</span>{" "}
+            <span className="font-mono font-bold">{activeRun!.id.slice(0, 8)}…</span>{" "}
             is active. Stop the simulation to make changes.
           </p>
         </div>
@@ -176,10 +114,9 @@ export default function SettingsPage() {
           <p className="text-sm text-violet-700 dark:text-violet-400">
             The influence matrix is a <strong>global config</strong> — edit it here and save.
             Changes apply the next time you start a simulation.
->>>>>>> 4cba29d79fddc513ccad76103273d0e0d4059ab0
           </p>
         </div>
-      ) : null}
+      )}
 
       {/* Influence Matrix */}
       <Card className={cn("animate-fade-in", isLocked && "opacity-60 pointer-events-none select-none")}>
