@@ -98,18 +98,9 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
       set({
         activeRun: run,
         worldState,
-        status: "running",
+        status: "paused",
         selectedVariable: activeVars[0]?.name ?? "health",
       });
-
-      // Start auto-tick polling
-      const interval = setInterval(async () => {
-        const { status: s, activeRun: r } = get();
-        if (s !== "running" || !r) return;
-        await get().runTick();
-      }, get().tickSpeed);
-
-      set({ tickInterval: interval });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "Failed to start simulation" });
     }

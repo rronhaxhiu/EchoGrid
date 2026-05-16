@@ -50,11 +50,18 @@ export default function RunsPage() {
   async function handleExport(runId: string) {
     setExporting(runId);
     try {
-      // Export is wired to API but download is unhooked per spec
-      await api.export.run(runId);
-      // Placeholder: would trigger download in real implementation
-    } catch {
-      // silently fail — export is a placeholder
+      const data = await api.export.run(runId);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `run-${runId}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Failed to export run:", e);
     } finally {
       setExporting(null);
     }

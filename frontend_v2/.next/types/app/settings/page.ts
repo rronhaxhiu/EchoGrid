@@ -1,4 +1,4 @@
-// File: /Users/91life/Desktop/Personal/projects/ai-hackathon/frontend_v2/src/app/settings/page.tsx
+// File: C:\Users\Admin\Desktop\hackathons\EchoGrid\frontend_v2\src\app\settings\page.tsx
 import * as entry from '../../../../src/app/settings/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

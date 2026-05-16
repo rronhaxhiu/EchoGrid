@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   Play, Square, Pause, RotateCcw,
-  ChevronRight, Settings2, Globe2, Zap, Timer, CheckSquare, ExternalLink
+  ChevronRight, Settings2, Globe2, Zap, Timer, CheckSquare, ExternalLink, Plus, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -25,6 +25,41 @@ const TICK_SPEEDS = [
   { label: "Fast", value: 600 },
   { label: "Turbo", value: 200 },
 ];
+
+const PRESET_COLORS = [
+  "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#10b981", 
+  "#14b8a6", "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
+  "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#f43f5e"
+];
+
+function ColorPickerOverlay({ color, onChange }: { color: string, onChange: (c: string) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="relative">
+      <div 
+        className="w-5 h-5 rounded-full shrink-0 border border-border shadow-sm cursor-pointer" 
+        style={{ backgroundColor: color }}
+        onClick={() => setIsOpen(!isOpen)}
+        title="Change color"
+      />
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute top-full left-0 mt-2 p-2 bg-white dark:bg-[#0b0914] border border-border rounded-lg shadow-xl z-50 grid grid-cols-5 gap-1.5 w-[140px]">
+            {PRESET_COLORS.map(c => (
+              <button
+                key={c}
+                onClick={() => { onChange(c); setIsOpen(false); }}
+                className={cn("w-5 h-5 rounded-full cursor-pointer hover:scale-110 transition-transform", c === color && "ring-2 ring-offset-1 ring-foreground")}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function WorldControlPanel() {
   const {
@@ -85,6 +120,37 @@ export function WorldControlPanel() {
     );
   }
 
+  function addVariable() {
+    const slug = `var_${Date.now()}`;
+    const r = Math.floor(Math.random() * 255);
+    const g = Math.floor(Math.random() * 255);
+    const b = Math.floor(Math.random() * 255);
+    const color = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    setVariableConfigs([
+      ...variableConfigs,
+      {
+        name: slug,
+        display_name: "New Variable",
+        initial_value: 50,
+        enabled: true,
+        color,
+        icon: "",
+      }
+    ]);
+  }
+
+  function removeVariable(name: string) {
+    setVariableConfigs(variableConfigs.filter(v => v.name !== name));
+  }
+
+  function updateVariableName(name: string, newDisplayName: string) {
+    setVariableConfigs(variableConfigs.map(v => v.name === name ? { ...v, display_name: newDisplayName } : v));
+  }
+
+  function updateVariableColor(name: string, color: string) {
+    setVariableConfigs(variableConfigs.map(v => v.name === name ? { ...v, color } : v));
+  }
+
   return (
     <div
       className={cn(
@@ -129,6 +195,10 @@ export function WorldControlPanel() {
               onSpatialDecayChange={setSpatialDecay}
               onToggleVariable={toggleVariable}
               onUpdateInitialValue={updateInitialValue}
+              onAddVariable={addVariable}
+              onRemoveVariable={removeVariable}
+              onUpdateVariableName={updateVariableName}
+              onUpdateColor={updateVariableColor}
               onStart={handleStart}
             />
           ) : (
@@ -172,7 +242,8 @@ function ConfigPanel({
   hexRadius, seed, spatialDecay, variableConfigs, tileCount,
   isLoading, error, isStopped, lastRunTick, lastRunId,
   onHexRadiusChange, onSeedChange, onSpatialDecayChange,
-  onToggleVariable, onUpdateInitialValue, onStart,
+  onToggleVariable, onUpdateInitialValue,
+  onAddVariable, onRemoveVariable, onUpdateVariableName, onUpdateColor, onStart,
 }: {
   hexRadius: number; seed: number; spatialDecay: number;
   variableConfigs: VariableConfig[]; tileCount: number;
@@ -183,6 +254,10 @@ function ConfigPanel({
   onSpatialDecayChange: (v: number) => void;
   onToggleVariable: (name: string) => void;
   onUpdateInitialValue: (name: string, value: number) => void;
+  onAddVariable: () => void;
+  onRemoveVariable: (name: string) => void;
+  onUpdateVariableName: (name: string, newName: string) => void;
+  onUpdateColor: (name: string, color: string) => void;
   onStart: () => void;
 }) {
   return (
@@ -311,14 +386,27 @@ function ConfigPanel({
                 )}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">{meta.icon}</span>
-                    <span className="text-sm font-medium">{meta.label}</span>
+                  <div className="flex items-center gap-2 flex-1 mr-4">
+                    <ColorPickerOverlay color={meta.color} onChange={(c) => onUpdateColor(config.name, c)} />
+                    <Input 
+                      value={meta.label} 
+                      onChange={(e) => onUpdateVariableName(config.name, e.target.value)}
+                      className="h-7 text-sm font-medium bg-transparent border-transparent hover:border-border focus-visible:ring-1 px-1 py-0"
+                    />
                   </div>
-                  <Switch
-                    checked={config.enabled}
-                    onCheckedChange={() => onToggleVariable(config.name)}
-                  />
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => onRemoveVariable(config.name)} 
+                      className="text-muted-foreground hover:text-red-500 transition-colors"
+                      title="Remove variable"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <Switch
+                      checked={config.enabled}
+                      onCheckedChange={() => onToggleVariable(config.name)}
+                    />
+                  </div>
                 </div>
                 {config.enabled && (
                   <div className="flex items-center gap-2">
@@ -340,6 +428,15 @@ function ConfigPanel({
             );
           })}
         </div>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onAddVariable}
+          className="w-full gap-1.5 mt-2 border-dashed"
+        >
+          <Plus className="w-4 h-4" />
+          Add Variable
+        </Button>
       </div>
 
       {/* Error */}
@@ -496,7 +593,7 @@ function RunningPanel({
               return (
                 <SelectItem key={v.name} value={v.name}>
                   <span className="flex items-center gap-2">
-                    <span>{meta.icon}</span>
+                    <div className="w-3 h-3 rounded-full border border-border/50 shadow-sm" style={{ backgroundColor: meta.color }} />
                     <span>{meta.label}</span>
                   </span>
                 </SelectItem>
@@ -527,7 +624,7 @@ function RunningPanel({
                     : "hover:bg-muted"
                 )}
               >
-                <span className="text-lg">{meta.icon}</span>
+                <div className="w-5 h-5 rounded-full border border-border shadow-sm shrink-0" style={{ backgroundColor: meta.color }} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium">{meta.label}</span>

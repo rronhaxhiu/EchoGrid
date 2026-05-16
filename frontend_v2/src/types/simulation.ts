@@ -164,7 +164,7 @@ export const DEFAULT_VARIABLE_CONFIGS: VariableConfig[] = [
     initial_value: 100,
     enabled: true,
     color: "#34D399",
-    icon: "❤️",
+    icon: "",
   },
   {
     name: "economy",
@@ -172,7 +172,7 @@ export const DEFAULT_VARIABLE_CONFIGS: VariableConfig[] = [
     initial_value: 50,
     enabled: true,
     color: "#FBBF24",
-    icon: "💰",
+    icon: "",
   },
   {
     name: "green",
@@ -180,7 +180,7 @@ export const DEFAULT_VARIABLE_CONFIGS: VariableConfig[] = [
     initial_value: 60,
     enabled: true,
     color: "#6EE7B7",
-    icon: "🌿",
+    icon: "",
   },
   {
     name: "mobility",
@@ -188,6 +188,6 @@ export const DEFAULT_VARIABLE_CONFIGS: VariableConfig[] = [
     initial_value: 40,
     enabled: true,
     color: "#818CF8",
-    icon: "🚀",
+    icon: "",
   },
 ];

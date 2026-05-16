@@ -20,10 +20,10 @@ const DEFAULT_INFLUENCE: Record<string, Record<string, number>> = {
 };
 
 export default function SettingsPage() {
-  const { activeRun } = useSimulationStore();
-  const isLocked = !!activeRun;
+  const { activeRun, status, variableConfigs } = useSimulationStore();
+  const isLocked = !activeRun || status === "running";
   const [matrix, setMatrix] = useState<Record<string, Record<string, number>>>(DEFAULT_INFLUENCE);
-  const [variables, setVariables] = useState<string[]>(["health", "economy", "green", "mobility"]);
+  const [variables, setVariables] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,8 +45,22 @@ export default function SettingsPage() {
         });
         setMatrix(empty);
       }
+    } else {
+      const activeVars = variableConfigs.filter(v => v.enabled).map(v => v.name);
+      setVariables(activeVars);
+      
+      const empty: Record<string, Record<string, number>> = {};
+      activeVars.forEach((v) => {
+        empty[v] = {};
+        activeVars.forEach((v2) => {
+          if (v !== v2) {
+             empty[v][v2] = DEFAULT_INFLUENCE[v]?.[v2] ?? 0;
+          }
+        });
+      });
+      setMatrix(empty);
     }
-  }, [activeRun]);
+  }, [activeRun, variableConfigs]);
 
   function updateCell(from: string, to: string, value: number) {
     setMatrix((prev) => ({
@@ -145,16 +159,16 @@ export default function SettingsPage() {
       </div>
 
       {/* Run state notice */}
-      {activeRun ? (
+      {activeRun && status === "running" ? (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/10 dark:border-red-800/50 p-4 flex items-center gap-3 animate-fade-in">
           <Lock className="w-4 h-4 text-red-500 dark:text-red-400 shrink-0" />
           <p className="text-sm text-red-700 dark:text-red-400">
             The influence matrix is <strong>locked</strong> while run{" "}
             <span className="font-mono font-bold">{activeRun.id.slice(0, 8)}...</span>
-            {" "}is active. Stop the simulation to make changes.
+            {" "}is running. Pause the simulation to make changes.
           </p>
         </div>
-      ) : (
+      ) : !activeRun ? (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-800/50 p-4 flex items-center gap-3 animate-fade-in">
           <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
           <p className="text-sm text-amber-700 dark:text-amber-400">
@@ -163,7 +177,7 @@ export default function SettingsPage() {
             to apply these settings to a run.
           </p>
         </div>
-      )}
+      ) : null}
 
       {/* Error */}
       {error && (
@@ -219,8 +233,8 @@ export default function SettingsPage() {
                     const meta = getVariableMeta(col);
                     return (
                       <th key={col} className="pb-3 px-2">
-                        <div className="flex flex-col items-center gap-1">
-                          <span className="text-lg">{meta.icon}</span>
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div className="w-3.5 h-3.5 rounded-full shadow-sm border border-border" style={{ backgroundColor: meta.color }} />
                           <span className="text-xs font-medium text-muted-foreground">
                             {meta.label}
                           </span>
@@ -238,7 +252,7 @@ export default function SettingsPage() {
                       {/* Row header */}
                       <td className="pr-4 py-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">{rowMeta.icon}</span>
+                          <div className="w-3.5 h-3.5 rounded-full shadow-sm border border-border" style={{ backgroundColor: rowMeta.color }} />
                           <span className="text-sm font-medium">{rowMeta.label}</span>
                         </div>
                       </td>
@@ -344,8 +358,12 @@ export default function SettingsPage() {
                         variant={coeff > 0 ? "success" : "destructive"}
                         className="gap-1 text-xs"
                       >
-                        {fromMeta.icon} → {toMeta.icon}{" "}
-                        <span className="font-mono">
+                        <div className="flex items-center gap-1 text-xs">
+                          <div className="w-2.5 h-2.5 rounded-full border border-border shadow-sm" style={{ backgroundColor: fromMeta.color }} />
+                          <span>→</span>
+                          <div className="w-2.5 h-2.5 rounded-full border border-border shadow-sm" style={{ backgroundColor: toMeta.color }} />
+                        </div>
+                        <span className="font-mono ml-1">
                           {coeff > 0 ? "+" : ""}{formatValue(coeff, 2)}
                         </span>
                       </Badge>
