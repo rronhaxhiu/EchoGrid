@@ -4,6 +4,7 @@ import type {
   WorldStateResponse,
   SimulationStatus,
   VariableConfig,
+  PredictionSchemaResponse,
 } from "@/types/simulation";
 import { DEFAULT_VARIABLE_CONFIGS } from "@/types/simulation";
 import { api } from "@/lib/api";
@@ -41,6 +42,10 @@ interface SimulationState {
   csvRows: number[][] | null;
   csvMeta: { rowCount: number; columnCount: number; fileName: string } | null;
 
+  // ML prediction (pest risk)
+  predictionSchema: PredictionSchemaResponse | null;
+  predictionLoading: boolean;
+
   // Error
   error: string | null;
 
@@ -65,6 +70,12 @@ interface SimulationState {
   fetchWorldState: () => Promise<void>;
   runTick: () => Promise<void>;
 
+  fetchPredictionSchema: () => Promise<void>;
+  predictRunTiles: (opts?: {
+    model?: "xgb" | "nn" | "both";
+    write_to_tiles?: boolean;
+  }) => Promise<void>;
+
   setError: (msg: string | null) => void;
 }
 
@@ -83,6 +94,9 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   influenceMatrix: { ...DEFAULT_INFLUENCE_MATRIX },
   csvRows: null,
   csvMeta: null,
+
+  predictionSchema: null,
+  predictionLoading: false,
 
   error: null,
 
@@ -110,6 +124,19 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
 
     try {
       const activeVars = variableConfigs.filter((v) => v.enabled);
+
+      // Build variable_specs: only include entries that have at least one meaningful spec field
+      const variable_specs: Record<string, { min_value?: number | null; max_value?: number | null; is_integer?: boolean }> = {};
+      for (const v of activeVars) {
+        if (v.min_value != null || v.max_value != null || v.is_integer != null) {
+          variable_specs[v.name] = {
+            min_value: v.min_value ?? null,
+            max_value: v.max_value ?? null,
+            is_integer: v.is_integer ?? false,
+          };
+        }
+      }
+
       const run = await api.runs.create({
         seed,
         hex_radius: hexRadius,
@@ -121,6 +148,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         diff_snapshots: true,
         influence_config: influenceMatrix,
         ...(csvRows && csvRows.length > 0 ? { csv_rows: csvRows } : {}),
+        ...(Object.keys(variable_specs).length > 0 ? { variable_specs } : {}),
       });
 
       // Fetch initial world state
@@ -194,6 +222,37 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
       });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "Failed to fetch state" });
+    }
+  },
+
+  fetchPredictionSchema: async () => {
+    try {
+      const predictionSchema = await api.prediction.schema();
+      set({ predictionSchema });
+    } catch {
+      set({ predictionSchema: null });
+    }
+  },
+
+  predictRunTiles: async (opts = {}) => {
+    const { activeRun } = get();
+    if (!activeRun) return;
+    set({ predictionLoading: true, error: null });
+    try {
+      await api.prediction.predictTiles(activeRun.id, {
+        model: opts.model ?? "xgb",
+        write_to_tiles: opts.write_to_tiles ?? true,
+        strict: false,
+        fill_missing: 0,
+      });
+      await get().fetchWorldState();
+      set({ selectedVariable: "pest_risk_label_xgb" });
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : "Prediction failed",
+      });
+    } finally {
+      set({ predictionLoading: false });
     }
   },
 

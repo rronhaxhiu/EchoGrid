@@ -38,6 +38,7 @@ class RunSerializer:
             hex_radius=model.hex_radius,
             spatial_decay=float(model.spatial_decay),
             influence_config=dict(model.influence_config),
+            variable_specs=dict(getattr(model, "variable_specs", None) or {}),
             current_tick=current_tick,
             event_log=list(events),
             pending_events=pending,

@@ -48,6 +48,8 @@ docker compose up --build
 
 The API will be available at `http://localhost:8000`.
 
+The backend image installs `requirements-ml.txt` (PyTorch, XGBoost) and copies `deployment_bundle/models` for local pest-risk prediction. Dev compose also mounts `../deployment_bundle` read-only.
+
 ### Running Locally
 
 You can run the backend locally while connecting to the PostgreSQL instance running in Docker.

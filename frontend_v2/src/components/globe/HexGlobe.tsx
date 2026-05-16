@@ -31,15 +31,18 @@ const FILL_RADIUS = SPHERE_RADIUS + 0.18;
 
 // Neon gradient palettes — designed for additive blending on dark backgrounds
 const PALETTES: Record<string, [THREE.Color, THREE.Color]> = {
-  health:   [new THREE.Color("#cc1133"), new THREE.Color("#00ee77")],
-  economy:  [new THREE.Color("#cc4400"), new THREE.Color("#ffcc00")],
-  green:    [new THREE.Color("#1a8800"), new THREE.Color("#00ffaa")],
-  mobility: [new THREE.Color("#1133bb"), new THREE.Color("#bb22ff")],
+  health:    [new THREE.Color("#cc1133"), new THREE.Color("#00ee77")],
+  economy:   [new THREE.Color("#cc4400"), new THREE.Color("#ffcc00")],
+  green:     [new THREE.Color("#1a8800"), new THREE.Color("#00ffaa")],
+  mobility:  [new THREE.Color("#1133bb"), new THREE.Color("#bb22ff")],
+  // Pest risk: 0 = Low (safe, green) → 1 = Medium (danger, red)
+  pest_risk: [new THREE.Color("#00ee77"), new THREE.Color("#cc1133")],
 };
 const GHOST_COLOR = new THREE.Color("#2a1860");
 
 function getColor(t: number, variable: string): THREE.Color {
-  const pal = PALETTES[variable] ?? PALETTES.health;
+  const palKey = variable.startsWith("pest_risk") ? "pest_risk" : variable;
+  const pal = PALETTES[palKey] ?? PALETTES.health;
   return pal[0].clone().lerp(pal[1], t);
 }
 

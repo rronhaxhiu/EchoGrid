@@ -41,8 +41,15 @@ from .schemas import (
     UpdateVariableRequest,
     VariableResponse,
     WorldStateResponse,
+    PredictionSchemaResponse,
+    PredictionHealthResponse,
+    PredictInstancesRequest,
+    PredictInstancesResponse,
+    PredictRunTilesRequest,
+    PredictRunTilesResponse,
 )
 from .service import SimulationService, VariableService
+from ..ml.prediction_service import prediction_service
 
 router = APIRouter(prefix="/api/v1")
 
@@ -104,6 +111,7 @@ async def create_run(body: CreateRunRequest, svc: SimulationService = Depends(ge
         diff_snapshots=body.diff_snapshots,
         influence_config=body.influence_config,
         csv_rows=body.csv_rows,
+        variable_specs={k: v.model_dump() for k, v in body.variable_specs.items()} if body.variable_specs else {},
     )
     return result
 
@@ -466,3 +474,61 @@ async def delete_variable(
     deleted = await svc.delete(variable_id)
     if not deleted:
         raise _var_not_found(variable_id)
+
+
+# ---------------------------------------------------------------------------
+# ML prediction (pest risk)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/prediction/schema", response_model=PredictionSchemaResponse, tags=["Prediction"])
+async def prediction_schema():
+    """Feature columns and metadata required for pest-risk models."""
+    return prediction_service.get_schema()
+
+
+@router.get("/prediction/health", response_model=PredictionHealthResponse, tags=["Prediction"])
+async def prediction_health():
+    """Check local / HTTP / Vertex prediction backend health."""
+    return prediction_service.health()
+
+
+@router.post(
+    "/prediction/predict",
+    response_model=PredictInstancesResponse,
+    tags=["Prediction"],
+)
+async def predict_instances(body: PredictInstancesRequest):
+    """Run pest-risk models on raw feature rows (same contract as Vertex container)."""
+    try:
+        return prediction_service.predict_instances(
+            body.instances, strict=body.strict
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post(
+    "/runs/{run_id}/predict-tiles",
+    response_model=PredictRunTilesResponse,
+    tags=["Prediction"],
+)
+async def predict_run_tiles(
+    run_id: str,
+    body: PredictRunTilesRequest,
+    svc: SimulationService = Depends(get_service),
+):
+    """Predict pest risk for every tile from current tile variable values."""
+    try:
+        result = await svc.predict_run_tiles(
+            run_id,
+            model=body.model,
+            write_to_tiles=body.write_to_tiles,
+            strict=body.strict,
+            fill_missing=body.fill_missing,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found.")
+    return result

@@ -1,0 +1,105 @@
+{
+  "feature_columns": [
+    "temperature",
+    "humidity",
+    "rainfall",
+    "soil_moisture",
+    "soil_ph",
+    "light_intensity",
+    "fertilizer_used",
+    "irrigation_needed",
+    "hour",
+    "month",
+    "location_Chattogram",
+    "location_Dhaka",
+    "location_Khulna",
+    "location_Mymensingh",
+    "location_Rajshahi",
+    "location_Sylhet",
+    "crop_type_Jute",
+    "crop_type_Potato",
+    "crop_type_Rice",
+    "crop_type_Tomato",
+    "crop_type_Wheat",
+    "season_summer",
+    "season_winter"
+  ],
+  "target": "pest_risk",
+  "class_names": [
+    "Low",
+    "Medium"
+  ],
+  "label_encoding": {
+    "Low": 0,
+    "Medium": 1
+  },
+  "threshold_xgb": 0.5199999999999999,
+  "threshold_nn": 0.565,
+  "scale_pos_weight": 2.0607783121993877,
+  "test_metrics": {
+    "xgboost": {
+      "roc_auc": 0.9999858557284299,
+      "pr_auc": 0.9999707255035992,
+      "classification_report_dict": {
+        "Low": {
+          "precision": 1.0,
+          "recall": 0.999009900990099,
+          "f1-score": 0.9995047052996533,
+          "support": 1010.0
+        },
+        "Medium": {
+          "precision": 0.9979633401221996,
+          "recall": 1.0,
+          "f1-score": 0.9989806320081549,
+          "support": 490.0
+        },
+        "accuracy": 0.9993333333333333,
+        "macro avg": {
+          "precision": 0.9989816700610998,
+          "recall": 0.9995049504950495,
+          "f1-score": 0.9992426686539041,
+          "support": 1500.0
+        },
+        "weighted avg": {
+          "precision": 0.9993346911065852,
+          "recall": 0.9993333333333333,
+          "f1-score": 0.9993335080244306,
+          "support": 1500.0
+        }
+      }
+    },
+    "pytorch_mlp": {
+      "roc_auc": 0.9995312184279652,
+      "pr_auc": 0.9990456783026019,
+      "classification_report_dict": {
+        "Low": {
+          "precision": 0.9940476190476191,
+          "recall": 0.9920792079207921,
+          "f1-score": 0.9930624380574826,
+          "support": 1010.0
+        },
+        "Medium": {
+          "precision": 0.983739837398374,
+          "recall": 0.9877551020408163,
+          "f1-score": 0.9857433808553971,
+          "support": 490.0
+        },
+        "accuracy": 0.9906666666666667,
+        "macro avg": {
+          "precision": 0.9888937282229966,
+          "recall": 0.9899171549808041,
+          "f1-score": 0.9894029094564398,
+          "support": 1500.0
+        },
+        "weighted avg": {
+          "precision": 0.9906804103755324,
+          "recall": 0.9906666666666667,
+          "f1-score": 0.9906715460381347,
+          "support": 1500.0
+        }
+      }
+    }
+  },
+  "seed": 42,
+  "pipeline_notes": "Scaler fit on raw train only; SMOTE applied to scaled train only; thresholds tuned on val F1 Medium."
+}

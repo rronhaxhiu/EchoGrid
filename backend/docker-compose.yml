@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -18,17 +16,23 @@ services:
       retries: 10
 
   backend:
-    build: .
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-simuser}:${POSTGRES_PASSWORD:-simpass}@postgres:5432/${POSTGRES_DB:-simdb}
       RUN_MIGRATIONS: "true"
+      PEST_MODEL_DIR: /app/deployment_bundle/models
+      PREDICTION_BACKEND: local
+      PYTHONPATH: /app/deployment_bundle
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - .:/app
+      - ./:/app
+      - ../deployment_bundle:/app/deployment_bundle:ro
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
@@ -38,7 +42,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
     depends_on:
       - backend
 

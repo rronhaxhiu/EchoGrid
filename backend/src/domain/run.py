@@ -52,6 +52,7 @@ class SimulationRun:
     snapshots: List[Snapshot] = field(default_factory=list)
     pending_events: List[SimEvent] = field(default_factory=list)
     pending_direct_updates: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    variable_specs: Dict[str, Any] = field(default_factory=dict)
 
     created_at: Optional[str] = None
 
@@ -86,6 +87,7 @@ class SimulationRun:
             "hex_radius": self.hex_radius,
             "spatial_decay": self.spatial_decay,
             "influence_config": self.influence_config,
+            "variable_specs": self.variable_specs,
             "current_tick": self.current_tick,
             "created_at": self.created_at,
             "tile_count": len(self.world.tiles),

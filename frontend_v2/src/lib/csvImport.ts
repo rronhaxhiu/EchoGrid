@@ -35,17 +35,35 @@ function slugifyColumnName(label: string, index: number, used: Set<string>): str
 
 /** Build simulation variables from CSV columns (headers → names, or Column 1, 2, …). */
 export function buildVariableConfigsFromCsv(parsed: ParsedCsv): VariableConfig[] {
-  const { rows, headers, columnCount } = parsed;
+  const { rows, headers, columnCount, rawColumnRanges } = parsed;
   const used = new Set<string>();
 
   return Array.from({ length: columnCount }, (_, j) => {
     const displayName = (headers?.[j]?.trim() || `Column ${j + 1}`).replace(/^"|"$/g, "");
-    const name = slugifyColumnName(displayName, j, used);
+    const rawHeader = headers?.[j]?.trim().replace(/^"|"$/g, "") ?? "";
+    const name =
+      rawHeader && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(rawHeader)
+        ? (() => {
+            let n = rawHeader;
+            const base = n;
+            let k = 1;
+            while (used.has(n)) n = `${base}_${k++}`;
+            used.add(n);
+            return n;
+          })()
+        : slugifyColumnName(displayName, j, used);
     const colValues = rows.map((r) => r[j] ?? 0);
     const initial_value =
       colValues.length > 0
         ? colValues.reduce((a, b) => a + b, 0) / colValues.length
         : 50;
+
+    // Detect integer columns: all observed values are whole numbers
+    const is_integer = colValues.length > 0 && colValues.every((v) => v === Math.floor(v));
+
+    const range = rawColumnRanges[j];
+    const min_value = range ? range.min : null;
+    const max_value = range ? range.max : null;
 
     return {
       name,
@@ -54,6 +72,9 @@ export function buildVariableConfigsFromCsv(parsed: ParsedCsv): VariableConfig[]
       enabled: true,
       color: COLUMN_COLORS[j % COLUMN_COLORS.length],
       icon: "",
+      is_integer,
+      min_value,
+      max_value,
     };
   });
 }
@@ -170,8 +191,10 @@ function looksLikeHeader(cells: string[]): boolean {
   return numeric < cells.filter((c) => c !== "").length / 2;
 }
 
+export type CsvImportMode = "simulation" | "ml_raw";
+
 /** Parse CSV text into numeric rows (optional header row skipped). */
-export function parseCsv(text: string): ParsedCsv {
+export function parseCsv(text: string, mode: CsvImportMode = "simulation"): ParsedCsv {
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -206,13 +229,23 @@ export function parseCsv(text: string): ParsedCsv {
   }
 
   const rawColumnRanges = columnRanges(rows);
-  const normalizedRows = normalizeCsvRowsTo0_100(rows);
+  const outputRows = mode === "ml_raw" ? rows : normalizeCsvRowsTo0_100(rows);
 
   return {
-    rows: normalizedRows,
+    rows: outputRows,
     headers,
-    rowCount: normalizedRows.length,
+    rowCount: outputRows.length,
     columnCount,
     rawColumnRanges,
   };
+}
+
+/** True if headers contain all pest-model feature columns (from model_meta.json). */
+export function headersMatchPestFeatures(
+  headers: string[] | null,
+  requiredFeatures: string[]
+): boolean {
+  if (!headers || requiredFeatures.length === 0) return false;
+  const normalized = new Set(headers.map((h) => h.trim().toLowerCase()));
+  return requiredFeatures.every((f) => normalized.has(f.toLowerCase()));
 }
