@@ -1,0 +1,1 @@
+self.__REACT_LOADABLE_MANIFEST="{\"app/world/page.tsx -> @/components/globe/HexGlobe\":{\"id\":\"app/world/page.tsx -> @/components/globe/HexGlobe\",\"files\":[\"static/chunks/_app-pages-browser_src_components_globe_HexGlobe_tsx.js\"]}}"
