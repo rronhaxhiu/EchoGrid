@@ -1,18 +1,20 @@
+/**
+ * Copy Cesium static assets (Workers, Assets, Widgets) into public/ for runtime.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.join(dirname, "..");
-const source = path.join(root, "node_modules", "cesium", "Build", "Cesium");
-const destination = path.join(root, "public", "cesium");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.join(__dirname, "..");
+const src = path.join(root, "node_modules", "cesium", "Build", "Cesium");
+const dest = path.join(root, "public", "cesium");
 
-if (!fs.existsSync(source)) {
-  console.warn("copy-cesium: Cesium build not found at", source);
+if (!fs.existsSync(src)) {
+  console.warn("copy-cesium: Cesium build not found at", src);
   process.exit(0);
 }
 
-fs.rmSync(destination, { recursive: true, force: true });
-fs.cpSync(source, destination, { recursive: true });
-
-console.log("copy-cesium: copied Cesium assets to public/cesium");
+fs.rmSync(dest, { recursive: true, force: true });
+fs.cpSync(src, dest, { recursive: true });
+console.log("copy-cesium: copied to", dest);

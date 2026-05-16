@@ -156,6 +156,63 @@ class EventResponse(BaseModel):
     source: str
 
 
+class GenerateEventRequest(BaseModel):
+    """User's plain-English scenario description."""
+
+    prompt: str = Field(
+        ..., min_length=3, max_length=2000, description="Natural-language scenario description."
+    )
+
+
+class GenerateEventResponse(BaseModel):
+    """LLM-generated event ready for user review."""
+
+    event: AddEventRequest
+    llm_raw: str = Field(..., description="Raw LLM output for transparency.")
+
+
+# ---------------------------------------------------------------------------
+# Interpretation schemas
+# ---------------------------------------------------------------------------
+
+
+class InterpretRunRequest(BaseModel):
+    """Optional configuration for run interpretation."""
+
+    compare_from_tick: Optional[int] = Field(
+        None, ge=0, description="If set, narrate changes since this tick instead of just current state."
+    )
+    include_suggestions: bool = Field(
+        True, description="Whether to include corrective event suggestions."
+    )
+    max_anomalies: int = Field(5, ge=0, le=20, description="Max anomalies to report.")
+    max_suggestions: int = Field(3, ge=0, le=10, description="Max corrective events to suggest.")
+
+
+class AnomalyDetail(BaseModel):
+    variable: str
+    description: str
+    severity: str = Field(..., description="low, medium, or high")
+    affected_tiles: List[List[int]]
+
+
+class SuggestedEvent(BaseModel):
+    name: str
+    description: str
+    delta_map: Dict[str, float]
+    target_tiles: List[List[int]]
+    tick: int
+
+
+class InterpretRunResponse(BaseModel):
+    run_id: str
+    tick: int
+    narrative: str
+    anomalies: List[AnomalyDetail]
+    suggestions: List[SuggestedEvent]
+    llm_raw: str = Field(..., description="Raw LLM output for transparency.")
+
+
 # ---------------------------------------------------------------------------
 # Snapshot schemas
 # ---------------------------------------------------------------------------
