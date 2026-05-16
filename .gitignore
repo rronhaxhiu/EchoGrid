@@ -7,6 +7,8 @@ __pycache__/
 # C extensions
 *.so
 
+
+
 *.DS_Store
 
 # Distribution / packaging
@@ -18,7 +20,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/
 lib64/
 parts/
 sdist/
