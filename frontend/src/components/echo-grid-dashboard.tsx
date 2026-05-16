@@ -70,8 +70,11 @@ export function EchoGridDashboard() {
     };
   }, []);
 
+  const showEmptyData =
+    status === "ready" && layer !== null && layer.cells.length === 0;
+
   return (
-    <div className="relative min-h-0 flex-1 bg-black">
+    <div className="relative w-full min-h-svh flex-1 bg-black">
       {layer && layer.cells.length > 0 ? (
         <CesiumH3Globe
           cells={layer.cells}
@@ -93,6 +96,14 @@ export function EchoGridDashboard() {
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/70">
           <p className="max-w-sm px-4 text-center text-sm text-white/85">
             Could not load data. Start the API on port 8000 and refresh.
+          </p>
+        </div>
+      ) : null}
+      {showEmptyData ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/60">
+          <p className="max-w-sm px-4 text-center text-sm text-amber-200/90">
+            Run loaded but no tile data was found in the latest snapshot. Check API
+            snapshot shape or rerun the simulation.
           </p>
         </div>
       ) : null}

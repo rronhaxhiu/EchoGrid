@@ -1,3 +1,5 @@
+"use client";
+
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 

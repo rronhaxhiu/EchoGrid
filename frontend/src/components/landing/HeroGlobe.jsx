@@ -1,6 +1,11 @@
 import { motion, useReducedMotion } from "framer-motion";
 
-import heroGlobeImage from "@/assets/landing/ecogrid-hero-globe.png";
+import heroGlobeImageSrc from "@/assets/landing/ecogrid-hero-globe.png";
+
+const heroGlobeImage =
+  typeof heroGlobeImageSrc === "object" && heroGlobeImageSrc !== null
+    ? heroGlobeImageSrc.src
+    : heroGlobeImageSrc;
 
 function HeroMedia({ media }) {
   if (media?.type === "video") {
@@ -33,7 +38,9 @@ function HeroMedia({ media }) {
   );
 }
 
-export function HeroGlobe({ media = { type: "image", src: heroGlobeImage } }) {
+export function HeroGlobe({
+  media = { type: "image", src: heroGlobeImage },
+}) {
   const reduceMotion = useReducedMotion();
 
   return (

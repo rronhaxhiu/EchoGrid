@@ -47,8 +47,12 @@ export function CesiumH3Globe({
       const Cesium = await import("cesium");
       if (cancelled) return;
 
+      const creditContainer = document.createElement("div");
+      creditContainer.style.display = "none";
+
       viewer = new Cesium.Viewer(el, {
         baseLayer: false,
+        creditContainer,
         terrainProvider: new Cesium.EllipsoidTerrainProvider(),
         animation: false,
         timeline: false,
