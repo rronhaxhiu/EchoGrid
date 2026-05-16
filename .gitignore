@@ -163,7 +163,7 @@ cython_debug/
 node_modules/
 frontend/public/cesium/
 frontend_v2/.next/
-frontend_v2/.next/*
+frontend_v2/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -8,6 +8,16 @@ import type {
 import { DEFAULT_VARIABLE_CONFIGS } from "@/types/simulation";
 import { api } from "@/lib/api";
 
+export type InfluenceMatrix = Record<string, Record<string, number>>;
+
+/** Default cross-variable influence coefficients. */
+export const DEFAULT_INFLUENCE_MATRIX: InfluenceMatrix = {
+  health:   { economy: 0.10, green: 0.05 },
+  economy:  { health: 0.20, green: -0.10, mobility: 0.15 },
+  green:    { health: 0.15, mobility: 0.05 },
+  mobility: { economy: 0.20, health: 0.05, green: -0.05 },
+};
+
 interface SimulationState {
   // Active run
   activeRun: RunMeta | null;
@@ -23,6 +33,10 @@ interface SimulationState {
   spatialDecay: number;
   variableConfigs: VariableConfig[];
 
+  // Global influence matrix — NOT tied to any run.
+  // Edited freely in Settings, applied when a new run starts.
+  influenceMatrix: InfluenceMatrix;
+
   // Error
   error: string | null;
 
@@ -33,6 +47,7 @@ interface SimulationState {
   setVariableConfigs: (configs: VariableConfig[]) => void;
   setSelectedVariable: (v: string) => void;
   setTickSpeed: (ms: number) => void;
+  setInfluenceMatrix: (m: InfluenceMatrix) => void;
 
   startSimulation: () => Promise<void>;
   stopSimulation: () => void;
@@ -57,6 +72,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   seed: 42,
   spatialDecay: 0.3,
   variableConfigs: [...DEFAULT_VARIABLE_CONFIGS],
+  influenceMatrix: { ...DEFAULT_INFLUENCE_MATRIX },
 
   error: null,
 
@@ -65,6 +81,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   setSpatialDecay: (d) => set({ spatialDecay: d }),
   setVariableConfigs: (configs) => set({ variableConfigs: configs }),
   setSelectedVariable: (v) => set({ selectedVariable: v }),
+  setInfluenceMatrix: (m) => set({ influenceMatrix: m }),
   setTickSpeed: (ms) => {
     set({ tickSpeed: ms });
     // Restart interval if running
@@ -76,7 +93,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   },
 
   startSimulation: async () => {
-    const { hexRadius, seed, spatialDecay, variableConfigs } = get();
+    const { hexRadius, seed, spatialDecay, variableConfigs, influenceMatrix } = get();
     set({ error: null });
 
     try {
@@ -90,6 +107,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         })),
         spatial_decay: spatialDecay,
         diff_snapshots: true,
+        influence_config: influenceMatrix,
       });
 
       // Fetch initial world state

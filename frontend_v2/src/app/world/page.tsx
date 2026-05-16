@@ -43,6 +43,11 @@ export default function WorldPage() {
 
   const tiles = worldState?.tiles ?? {};
 
+  // Keep tile editor variables live: look up from the latest world state on
+  // every render rather than using the stale snapshot captured at click time.
+  const liveTileVariables =
+    tileInfo ? (tiles[`${tileInfo.q},${tileInfo.r}`] ?? tileInfo.variables) : null;
+
   return (
     <div className="fixed inset-0 pt-16 overflow-hidden bg-[#050410] dark:bg-[#050410]">
       {/* Globe fills the whole background */}
@@ -102,12 +107,12 @@ export default function WorldPage() {
       )}
 
       {/* Tile editor */}
-      {tileInfo && (
+      {tileInfo && liveTileVariables && (
         <div className="absolute bottom-8 left-8 z-20">
           <TileEditor
             q={tileInfo.q}
             r={tileInfo.r}
-            variables={tileInfo.variables}
+            variables={liveTileVariables}
             onClose={() => setTileInfo(null)}
           />
         </div>

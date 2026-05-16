@@ -37,6 +37,7 @@ class SimulationEngine:
             world=run.world,
             influence=run.influence,
             spatial_decay=run.spatial_decay,
+            equilibrium=run.global_initial_values,
         )
         self._event_processor = EventProcessor(world=run.world)
 
@@ -71,15 +72,23 @@ class SimulationEngine:
         # --- Step 2: Apply base deltas ---
         PropagationEngine.apply_deltas(self.run.world, base_deltas)
 
-        # --- Step 3: Influence propagation (computed from base, not cascading) ---
-        influence_deltas = self._propagation.compute_influence_deltas(base_deltas)
-        PropagationEngine.apply_deltas(self.run.world, influence_deltas)
+        # --- Step 3: Multi-hop cascade (influence → spatial → influence → …) ---
+        # Ripples the event signal outward: influence fires within each tile,
+        # the combined delta spreads to neighbours (attenuated by spatial_decay),
+        # influence fires again in those neighbours, and so on until the signal
+        # is negligible.  All cascade deltas are computed from the *base* deltas
+        # (not the mutated world state) and applied atomically.
+        if base_deltas:
+            cascade_deltas = self._propagation.compute_cascade_deltas(base_deltas)
+            PropagationEngine.apply_deltas(self.run.world, cascade_deltas)
 
-        # --- Step 4: Spatial propagation (computed from base, not cascading) ---
-        spatial_deltas = self._propagation.compute_spatial_deltas(base_deltas)
-        PropagationEngine.apply_deltas(self.run.world, spatial_deltas)
+        # --- Step 4: Ambient autonomous dynamics (runs every tick) ---
+        # Natural decay + continuous cross-variable influence + spatial diffusion.
+        # This is what makes the simulation evolve independently of events.
+        ambient_deltas = self._propagation.compute_ambient_deltas()
+        PropagationEngine.apply_deltas(self.run.world, ambient_deltas)
 
-        # --- Step 5: Snapshot ---
+        # --- Step 6: Snapshot ---
         snapshot = self._capture_snapshot()
         self.run.snapshots.append(snapshot)
 

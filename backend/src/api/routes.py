@@ -102,6 +102,7 @@ async def create_run(body: CreateRunRequest, svc: SimulationService = Depends(ge
         global_initial_values={v.name: v.initial_value for v in active_variables},  # type: ignore[misc]
         spatial_decay=body.spatial_decay,
         diff_snapshots=body.diff_snapshots,
+        influence_config=body.influence_config,
     )
     return result
 
