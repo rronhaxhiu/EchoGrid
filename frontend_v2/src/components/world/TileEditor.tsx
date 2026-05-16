@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, CalendarClock, Check, AlertCircle } from "lucide-react";
+import { X, Zap, Check, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, getVariableMeta, formatValue } from "@/lib/utils";
 import { api } from "@/lib/api";
@@ -16,22 +16,22 @@ interface TileEditorProps {
 
 type SubmitState = "idle" | "loading" | "success" | "error";
 
-const QUICK_DELTAS = [-10, -5, -1, +1, +5, +10];
+const QUICK_DELTAS = [-20, -10, -5, +5, +10, +20];
 
 export function TileEditor({ q, r, variables, onClose }: TileEditorProps) {
-  const { activeRun, status } = useSimulationStore();
+  const { activeRun, status, runTick } = useSimulationStore();
   const isActive = status === "running" || status === "paused";
 
   const varNames = Object.keys(variables);
   const currentTick = activeRun?.current_tick ?? 0;
 
-  const [selectedVar, setSelectedVar] = useState(varNames[0] ?? "");
-  const [eventName, setEventName] = useState("");
-  const [scheduledTick, setScheduledTick] = useState(currentTick + 1);
   const [deltaMap, setDeltaMap] = useState<Record<string, number>>({});
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [lastScheduledTick, setLastScheduledTick] = useState<number | null>(null);
+
+  const hasDelta = Object.values(deltaMap).some((d) => d !== 0);
+  const canApply = isActive && hasDelta;
+  const isBusy = submitState === "loading";
 
   function nudgeDelta(variable: string, delta: number) {
     setDeltaMap((prev) => {
@@ -45,43 +45,42 @@ export function TileEditor({ q, r, variables, onClose }: TileEditorProps) {
     });
   }
 
-  function clearVar(variable: string) {
-    setDeltaMap((prev) => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { [variable]: _removed, ...rest } = prev;
-      return rest;
-    });
+  function clearAll() {
+    setDeltaMap({});
   }
 
-  const activeDelta = deltaMap[selectedVar] ?? 0;
-  const canSchedule =
-    isActive &&
-    eventName.trim().length > 0 &&
-    Object.keys(deltaMap).length > 0;
-  const isBusy = submitState === "loading";
+  // Build a human-readable event name from the delta map
+  function buildEventName(): string {
+    const parts = Object.entries(deltaMap)
+      .filter(([, d]) => d !== 0)
+      .map(([v, d]) => `${v} ${d > 0 ? "+" : ""}${d}`);
+    return parts.join(", ");
+  }
 
-  async function scheduleEvent() {
-    if (!activeRun || !canSchedule) return;
+  async function applyNow() {
+    if (!activeRun || !canApply) return;
     setSubmitState("loading");
     setErrorMsg("");
 
     try {
-      const result = await api.events.add(activeRun.id, {
-        tick: scheduledTick,
-        name: eventName.trim(),
+      await api.events.add(activeRun.id, {
+        // Always target the very next tick; backend bumps if already passed
+        tick: currentTick + 1,
+        name: buildEventName(),
         delta_map: deltaMap,
         target_tiles: [[q, r]],
         source: "user",
       });
-      // Use the tick confirmed by the backend (it may have been bumped forward)
-      setLastScheduledTick(result.tick);
-      setSubmitState("success");
-      setEventName("");
+
+      // Force the event to be processed immediately by running one tick now.
+      // Without this, a paused simulation would never process the event.
+      await runTick();
+
       setDeltaMap({});
-      setScheduledTick(currentTick + 1);
-      setTimeout(() => setSubmitState("idle"), 3000);
+      setSubmitState("success");
+      setTimeout(() => setSubmitState("idle"), 2500);
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Failed to schedule");
+      setErrorMsg(e instanceof Error ? e.message : "Failed to apply");
       setSubmitState("error");
       setTimeout(() => setSubmitState("idle"), 3000);
     }
@@ -107,174 +106,93 @@ export function TileEditor({ q, r, variables, onClose }: TileEditorProps) {
         </button>
       </div>
 
-      {/* Current variable values */}
+      {/* Variable rows */}
       <div className="px-4 py-3 space-y-2">
         {varNames.map((name) => {
           const meta = getVariableMeta(name);
           const val = variables[name] ?? 0;
           const barWidth = Math.min(100, Math.max(0, val));
-          const isSelected = name === selectedVar;
           const pendingDelta = deltaMap[name] ?? 0;
 
           return (
-            <button
-              key={name}
-              onClick={() => isActive && setSelectedVar(name)}
-              className={cn(
-                "w-full flex items-center gap-3 px-2.5 py-2 rounded-xl transition-all duration-150 text-left",
-                isActive ? "cursor-pointer" : "cursor-default",
-                isSelected && isActive
-                  ? "bg-violet-50 dark:bg-violet-900/20 ring-1 ring-violet-300 dark:ring-violet-700"
-                  : "hover:bg-muted/60"
-              )}
-            >
-              <span className="text-base w-5 text-center">{meta.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-medium">{meta.label}</span>
-                  <div className="flex items-center gap-1.5">
-                    {pendingDelta !== 0 && (
+            <div key={name} className="space-y-1.5">
+              {/* Value row */}
+              <div className="flex items-center gap-3 px-2">
+                <span className="text-base w-5 text-center">{meta.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium">{meta.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      {pendingDelta !== 0 && (
+                        <span
+                          className={cn(
+                            "text-xs font-mono font-bold",
+                            pendingDelta > 0 ? "text-emerald-500" : "text-red-400"
+                          )}
+                        >
+                          {pendingDelta > 0 ? "+" : ""}
+                          {pendingDelta}
+                        </span>
+                      )}
                       <span
-                        className={cn(
-                          "text-xs font-mono font-bold tabular-nums",
-                          pendingDelta > 0 ? "text-emerald-500" : "text-red-400"
-                        )}
+                        className="text-xs font-mono font-bold"
+                        style={{ color: meta.color }}
                       >
-                        {pendingDelta > 0 ? "+" : ""}
-                        {pendingDelta}
+                        {formatValue(val)}
                       </span>
-                    )}
-                    <span
-                      className="text-xs font-mono font-bold tabular-nums"
-                      style={{ color: meta.color }}
-                    >
-                      {formatValue(val)}
-                    </span>
+                    </div>
+                  </div>
+                  <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${barWidth}%`, backgroundColor: meta.color }}
+                    />
                   </div>
                 </div>
-                <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${barWidth}%`, backgroundColor: meta.color }}
-                  />
-                </div>
               </div>
-            </button>
+
+              {/* Delta buttons — always visible when simulation active */}
+              {isActive && (
+                <div className="grid grid-cols-6 gap-1 px-2">
+                  {QUICK_DELTAS.map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => nudgeDelta(name, d)}
+                      disabled={isBusy}
+                      className={cn(
+                        "h-7 rounded-lg text-xs font-mono font-bold transition-all duration-150",
+                        "border disabled:opacity-40 disabled:cursor-not-allowed",
+                        d < 0
+                          ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/50 dark:bg-emerald-900/20 dark:text-emerald-400"
+                      )}
+                    >
+                      {d > 0 ? `+${d}` : d}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
 
-      {/* Event injection — only when simulation is active */}
-      {isActive && selectedVar && (
+      {/* Apply section */}
+      {isActive && (
         <>
           <div className="h-px bg-border mx-4" />
-          <div className="px-4 py-3 space-y-3">
-
-            {/* Section label */}
-            <div className="flex items-center gap-1.5">
-              <CalendarClock className="w-3.5 h-3.5 text-violet-500" />
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Inject Event
-              </span>
-            </div>
-
-            {/* Event name */}
-            <input
-              type="text"
-              placeholder="Event name (e.g. Flood, Tax reform…)"
-              value={eventName}
-              onChange={(e) => setEventName(e.target.value)}
-              disabled={isBusy}
-              className="w-full h-8 rounded-lg border border-input bg-background px-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50"
-            />
-
-            {/* Tick */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                Schedule at tick
-              </span>
-              <input
-                type="number"
-                min={currentTick + 1}
-                value={scheduledTick}
-                onChange={(e) =>
-                  setScheduledTick(
-                    Math.max(currentTick + 1, parseInt(e.target.value) || currentTick + 1)
-                  )
-                }
-                disabled={isBusy}
-                className="w-20 h-8 rounded-lg border border-input bg-background px-3 text-xs font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50"
-              />
-            </div>
-
-            {/* Delta nudge for selected variable */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-muted-foreground">
-                  Δ{" "}
-                  <span
-                    className="font-medium"
-                    style={{ color: getVariableMeta(selectedVar).color }}
-                  >
-                    {getVariableMeta(selectedVar).label}
-                  </span>
-                </span>
-                {activeDelta !== 0 && (
+          <div className="px-4 py-3 space-y-2">
+            {/* Pending summary */}
+            {hasDelta && (
+              <div className="rounded-xl border border-border bg-muted/40 px-3 py-2 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">Pending changes</span>
                   <button
-                    onClick={() => clearVar(selectedVar)}
+                    onClick={clearAll}
                     disabled={isBusy}
                     className="text-xs text-muted-foreground hover:text-foreground underline disabled:opacity-50"
                   >
                     clear
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-6 gap-1">
-                {QUICK_DELTAS.map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => nudgeDelta(selectedVar, d)}
-                    disabled={isBusy}
-                    className={cn(
-                      "h-8 rounded-lg text-xs font-mono font-bold transition-all duration-150",
-                      "border disabled:opacity-40 disabled:cursor-not-allowed",
-                      d < 0
-                        ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
-                        : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/50 dark:bg-emerald-900/20 dark:text-emerald-400"
-                    )}
-                  >
-                    {d > 0 ? `+${d}` : d}
-                  </button>
-                ))}
-              </div>
-
-              {activeDelta !== 0 && (
-                <p
-                  className={cn(
-                    "mt-1.5 text-center text-xs font-mono font-bold",
-                    activeDelta > 0 ? "text-emerald-500" : "text-red-400"
-                  )}
-                >
-                  {activeDelta > 0 ? "+" : ""}
-                  {activeDelta}
-                </p>
-              )}
-            </div>
-
-            {/* Accumulated delta summary */}
-            {Object.keys(deltaMap).length > 0 && (
-              <div className="rounded-xl border border-border bg-muted/40 px-3 py-2 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    Event changes
-                  </span>
-                  <button
-                    onClick={() => setDeltaMap({})}
-                    disabled={isBusy}
-                    className="text-xs text-muted-foreground hover:text-foreground underline disabled:opacity-50"
-                  >
-                    clear all
                   </button>
                 </div>
                 {Object.entries(deltaMap).map(([v, d]) => {
@@ -285,14 +203,8 @@ export function TileEditor({ q, r, variables, onClose }: TileEditorProps) {
                         <span>{meta.icon}</span>
                         <span>{meta.label}</span>
                       </span>
-                      <span
-                        className={cn(
-                          "font-mono font-bold",
-                          d > 0 ? "text-emerald-500" : "text-red-400"
-                        )}
-                      >
-                        {d > 0 ? "+" : ""}
-                        {d}
+                      <span className={cn("font-mono font-bold", d > 0 ? "text-emerald-500" : "text-red-400")}>
+                        {d > 0 ? "+" : ""}{d}
                       </span>
                     </div>
                   );
@@ -300,31 +212,29 @@ export function TileEditor({ q, r, variables, onClose }: TileEditorProps) {
               </div>
             )}
 
-            {/* Schedule button */}
             <Button
               size="sm"
-              onClick={scheduleEvent}
-              disabled={!canSchedule || isBusy}
+              onClick={applyNow}
+              disabled={!canApply || isBusy}
               className="w-full h-8 text-xs gap-1.5"
             >
               {isBusy ? (
                 <>
                   <div className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                  Scheduling…
+                  Applying…
                 </>
               ) : (
                 <>
-                  <CalendarClock className="w-3.5 h-3.5" />
-                  Schedule Event
+                  <Zap className="w-3.5 h-3.5" />
+                  Apply Now
                 </>
               )}
             </Button>
 
-            {/* Feedback */}
-            {submitState === "success" && lastScheduledTick !== null && (
+            {submitState === "success" && (
               <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 animate-fade-in">
                 <Check className="w-3.5 h-3.5" />
-                <span>Event scheduled for tick {lastScheduledTick}</span>
+                <span>Applied — effects visible on next tick</span>
               </div>
             )}
             {submitState === "error" && (
@@ -337,11 +247,10 @@ export function TileEditor({ q, r, variables, onClose }: TileEditorProps) {
         </>
       )}
 
-      {/* Read-only hint */}
       {!isActive && (
         <div className="px-4 pb-3">
           <p className="text-xs text-muted-foreground text-center">
-            Start a simulation to inject events
+            Start a simulation to inject changes
           </p>
         </div>
       )}
