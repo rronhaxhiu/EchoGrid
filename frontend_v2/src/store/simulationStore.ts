@@ -37,6 +37,10 @@ interface SimulationState {
   // Edited freely in Settings, applied when a new run starts.
   influenceMatrix: InfluenceMatrix;
 
+  // Optional CSV rows for per-tile initial values (assigned randomly at run start).
+  csvRows: number[][] | null;
+  csvMeta: { rowCount: number; columnCount: number; fileName: string } | null;
+
   // Error
   error: string | null;
 
@@ -48,6 +52,10 @@ interface SimulationState {
   setSelectedVariable: (v: string) => void;
   setTickSpeed: (ms: number) => void;
   setInfluenceMatrix: (m: InfluenceMatrix) => void;
+  setCsvRows: (
+    rows: number[][] | null,
+    meta?: { rowCount: number; columnCount: number; fileName: string } | null
+  ) => void;
 
   startSimulation: () => Promise<void>;
   stopSimulation: () => void;
@@ -73,6 +81,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   spatialDecay: 0.3,
   variableConfigs: [...DEFAULT_VARIABLE_CONFIGS],
   influenceMatrix: { ...DEFAULT_INFLUENCE_MATRIX },
+  csvRows: null,
+  csvMeta: null,
 
   error: null,
 
@@ -82,6 +92,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   setVariableConfigs: (configs) => set({ variableConfigs: configs }),
   setSelectedVariable: (v) => set({ selectedVariable: v }),
   setInfluenceMatrix: (m) => set({ influenceMatrix: m }),
+  setCsvRows: (rows, meta = null) => set({ csvRows: rows, csvMeta: meta }),
   setTickSpeed: (ms) => {
     set({ tickSpeed: ms });
     // Restart interval if running
@@ -93,7 +104,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   },
 
   startSimulation: async () => {
-    const { hexRadius, seed, spatialDecay, variableConfigs, influenceMatrix } = get();
+    const { hexRadius, seed, spatialDecay, variableConfigs, influenceMatrix, csvRows } =
+      get();
     set({ error: null });
 
     try {
@@ -108,6 +120,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         spatial_decay: spatialDecay,
         diff_snapshots: true,
         influence_config: influenceMatrix,
+        ...(csvRows && csvRows.length > 0 ? { csv_rows: csvRows } : {}),
       });
 
       // Fetch initial world state

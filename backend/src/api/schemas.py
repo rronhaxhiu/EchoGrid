@@ -43,6 +43,14 @@ class CreateRunRequest(BaseModel):
         None,
         description="Influence matrix to apply from tick 0. Falls back to built-in defaults if omitted.",
     )
+    csv_rows: Optional[List[List[float]]] = Field(
+        None,
+        description=(
+            "Optional CSV data: each inner list is one row of numeric values, columns map to "
+            "variables in order. Rows are randomly assigned to tiles (seeded); extra rows are "
+            "sampled, missing tiles use global initial_value defaults."
+        ),
+    )
 
 
 class RunMetaResponse(BaseModel):

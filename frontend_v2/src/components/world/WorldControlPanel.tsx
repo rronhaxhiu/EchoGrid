@@ -3,7 +3,8 @@
 import { useState } from "react";
 import {
   Play, Square, Pause, RotateCcw,
-  ChevronRight, Settings2, Globe2, Zap, Timer, CheckSquare, ExternalLink, Plus, Trash2
+  ChevronRight, Settings2, Globe2, Zap, Timer, CheckSquare, ExternalLink, Plus, Trash2,
+  FileSpreadsheet, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { useSimulationStore } from "@/store/simulationStore";
 import { cn, formatValue, getVariableMeta, getTileCount } from "@/lib/utils";
+import { parseCsv, buildVariableConfigsFromCsv } from "@/lib/csvImport";
 import type { VariableConfig } from "@/types/simulation";
 
 const TICK_SPEEDS = [
@@ -79,6 +81,10 @@ export function WorldControlPanel() {
     setVariableConfigs,
     setSelectedVariable,
     setTickSpeed,
+    csvRows,
+    csvMeta,
+    setCsvRows,
+    setInfluenceMatrix,
     startSimulation,
     stopSimulation,
     pauseSimulation,
@@ -199,6 +205,14 @@ export function WorldControlPanel() {
               onRemoveVariable={removeVariable}
               onUpdateVariableName={updateVariableName}
               onUpdateColor={updateVariableColor}
+              csvRows={csvRows}
+              csvMeta={csvMeta}
+              onCsvChange={setCsvRows}
+              onVariableConfigsFromCsv={(configs) => {
+                setVariableConfigs(configs);
+                setInfluenceMatrix({});
+                if (configs[0]) setSelectedVariable(configs[0].name);
+              }}
               onStart={handleStart}
             />
           ) : (
@@ -243,7 +257,8 @@ function ConfigPanel({
   isLoading, error, isStopped, lastRunTick, lastRunId,
   onHexRadiusChange, onSeedChange, onSpatialDecayChange,
   onToggleVariable, onUpdateInitialValue,
-  onAddVariable, onRemoveVariable, onUpdateVariableName, onUpdateColor, onStart,
+  onAddVariable, onRemoveVariable, onUpdateVariableName, onUpdateColor,
+  csvRows, csvMeta, onCsvChange, onVariableConfigsFromCsv, onStart,
 }: {
   hexRadius: number; seed: number; spatialDecay: number;
   variableConfigs: VariableConfig[]; tileCount: number;
@@ -258,8 +273,46 @@ function ConfigPanel({
   onRemoveVariable: (name: string) => void;
   onUpdateVariableName: (name: string, newName: string) => void;
   onUpdateColor: (name: string, color: string) => void;
+  csvRows: number[][] | null;
+  csvMeta: { rowCount: number; columnCount: number; fileName: string } | null;
+  onCsvChange: (
+    rows: number[][] | null,
+    meta?: { rowCount: number; columnCount: number; fileName: string } | null
+  ) => void;
+  onVariableConfigsFromCsv: (configs: VariableConfig[]) => void;
   onStart: () => void;
 }) {
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [csvInfo, setCsvInfo] = useState<string | null>(null);
+
+  async function handleCsvFile(file: File) {
+    setCsvError(null);
+    setCsvInfo(null);
+    try {
+      const text = await file.text();
+      const parsed = parseCsv(text);
+      const configs = buildVariableConfigsFromCsv(parsed);
+      onVariableConfigsFromCsv(configs);
+      onCsvChange(parsed.rows, {
+        rowCount: parsed.rowCount,
+        columnCount: parsed.columnCount,
+        fileName: file.name,
+      });
+      setCsvInfo(
+        `Created ${configs.length} variable(s): ${configs.map((c) => c.display_name).join(", ")}`
+      );
+    } catch (err) {
+      onCsvChange(null, null);
+      setCsvError(err instanceof Error ? err.message : "Failed to parse CSV");
+    }
+  }
+
+  const csvAssignmentHint = csvRows
+    ? csvRows.length >= tileCount
+      ? `${tileCount} random rows → ${tileCount} tiles`
+      : `${csvRows.length} rows → tiles, ${tileCount - csvRows.length} tiles use defaults`
+    : null;
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* Run ended summary card */}
@@ -374,7 +427,7 @@ function ConfigPanel({
 
         <div className="space-y-2">
           {variableConfigs.map((config) => {
-            const meta = getVariableMeta(config.name);
+            const meta = getVariableMeta(config.name, config);
             return (
               <div
                 key={config.name}
@@ -387,9 +440,9 @@ function ConfigPanel({
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 flex-1 mr-4">
-                    <ColorPickerOverlay color={meta.color} onChange={(c) => onUpdateColor(config.name, c)} />
+                    <ColorPickerOverlay color={config.color || meta.color} onChange={(c) => onUpdateColor(config.name, c)} />
                     <Input 
-                      value={meta.label} 
+                      value={config.display_name} 
                       onChange={(e) => onUpdateVariableName(config.name, e.target.value)}
                       className="h-7 text-sm font-medium bg-transparent border-transparent hover:border-border focus-visible:ring-1 px-1 py-0"
                     />
@@ -437,6 +490,87 @@ function ConfigPanel({
           <Plus className="w-4 h-4" />
           Add Variable
         </Button>
+      </div>
+
+      <Separator />
+
+      {/* CSV import */}
+      <div className="space-y-3">
+        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          CSV Data (optional)
+        </Label>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Upload numeric CSV (integers or decimals). Each column becomes a simulation variable
+          (header row = names). Values are scaled to 0–100 per column, then rows are randomly
+          assigned to tiles when the simulation starts.
+        </p>
+
+        {!csvRows ? (
+          <label className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 hover:bg-muted/40 transition-colors p-4 cursor-pointer">
+            <FileSpreadsheet className="w-6 h-6 text-violet-500" />
+            <span className="text-xs font-medium">Choose CSV file</span>
+            <span className="text-[10px] text-muted-foreground">Header row optional</span>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleCsvFile(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        ) : (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 dark:border-violet-800/50 dark:bg-violet-900/10 p-3 space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{csvMeta?.fileName ?? "imported.csv"}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {csvMeta?.rowCount.toLocaleString() ?? csvRows.length} rows ×{" "}
+                  {csvMeta?.columnCount ?? csvRows[0]?.length ?? 0} columns
+                </p>
+                {csvAssignmentHint && (
+                  <p className="text-xs text-violet-600 dark:text-violet-400 mt-1">
+                    {csvAssignmentHint}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onCsvChange(null, null);
+                  setCsvError(null);
+                  setCsvInfo(null);
+                }}
+                className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title="Remove CSV"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <label className="text-xs text-violet-600 dark:text-violet-400 hover:underline cursor-pointer w-fit">
+              Replace file
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleCsvFile(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+        )}
+
+        {csvInfo && (
+          <p className="text-xs text-violet-600 dark:text-violet-400">{csvInfo}</p>
+        )}
+        {csvError && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">{csvError}</p>
+        )}
       </div>
 
       {/* Error */}
@@ -589,7 +723,7 @@ function RunningPanel({
           </SelectTrigger>
           <SelectContent>
             {variableConfigs.map((v) => {
-              const meta = getVariableMeta(v.name);
+              const meta = getVariableMeta(v.name, v);
               return (
                 <SelectItem key={v.name} value={v.name}>
                   <span className="flex items-center gap-2">
@@ -610,7 +744,7 @@ function RunningPanel({
         </Label>
         <div className="space-y-2">
           {variableConfigs.map((v) => {
-            const meta = getVariableMeta(v.name);
+            const meta = getVariableMeta(v.name, v);
             const val = global[v.name] ?? 0;
             const isSelected = v.name === selectedVariable;
             return (
