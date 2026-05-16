@@ -217,6 +217,106 @@ class SimulationService:
             return None
         return await self._repo.list_events(run_id)
 
+    async def generate_event(self, run_id: str, prompt: str) -> Optional[Dict[str, Any]]:
+        """
+        Use Groq LLM to translate a plain-English scenario into a valid event.
+        Returns None if the run is not found.
+        Raises ValueError if Groq API key is not configured or LLM fails.
+        """
+        from ..config import settings
+        from ..application.llm_service import GroqEventGenerator
+
+        if not settings.groq_api_key:
+            raise ValueError("GROQ_API_KEY is not configured.")
+
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+
+        generator = GroqEventGenerator(
+            api_key=settings.groq_api_key,
+            model=settings.groq_model,
+        )
+
+        result = await generator.generate_event(
+            prompt=prompt,
+            variables=run.variables,
+            hex_radius=run.hex_radius,
+            current_tick=run.current_tick,
+            global_state=run.world.get_global_state(),
+        )
+
+        return result
+
+    async def interpret_run(
+        self,
+        run_id: str,
+        compare_from_tick: Optional[int] = None,
+        include_suggestions: bool = True,
+        max_anomalies: int = 5,
+        max_suggestions: int = 3,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Use Groq LLM to interpret the current world state.
+        Optionally compare against a previous tick's snapshot.
+        Returns None if the run is not found.
+        Raises ValueError if Groq API key is not configured or LLM fails.
+        """
+        from ..config import settings
+        from ..application.llm_service import GroqRunInterpreter
+
+        if not settings.groq_api_key:
+            raise ValueError("GROQ_API_KEY is not configured.")
+
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+
+        interpreter = GroqRunInterpreter(
+            api_key=settings.groq_api_key,
+            model=settings.groq_model,
+        )
+
+        # Assemble current context
+        global_state = run.world.get_global_state()
+        tile_snapshot = run.world.snapshot()
+        recent_events = [e.to_dict() for e in run.event_log[-10:]]
+
+        # Comparison snapshot (if requested)
+        compare_global_state = None
+        compare_tile_snapshot = None
+        if compare_from_tick is not None and compare_from_tick < run.current_tick:
+            snap_data = await self._repo.get_snapshot(run_id, compare_from_tick)
+            if snap_data and isinstance(snap_data, dict) and "state" in snap_data:
+                compare_tile_snapshot = snap_data["state"]
+                # Compute global state from the comparison snapshot
+                n = len(compare_tile_snapshot) if compare_tile_snapshot else 1
+                compare_global_state = {}
+                for tile_vars in compare_tile_snapshot.values():
+                    for var, val in tile_vars.items():
+                        compare_global_state[var] = compare_global_state.get(var, 0) + val
+                compare_global_state = {v: t / n for v, t in compare_global_state.items()}
+
+        result = await interpreter.interpret(
+            variables=run.variables,
+            hex_radius=run.hex_radius,
+            current_tick=run.current_tick,
+            global_state=global_state,
+            tile_snapshot=tile_snapshot,
+            recent_events=recent_events,
+            influence_config=run.influence_config,
+            include_suggestions=include_suggestions,
+            max_anomalies=max_anomalies,
+            max_suggestions=max_suggestions,
+            compare_from_tick=compare_from_tick,
+            compare_global_state=compare_global_state,
+            compare_tile_snapshot=compare_tile_snapshot,
+        )
+
+        result["run_id"] = run_id
+        result["tick"] = run.current_tick
+        return result
+
     # ---------------------------------------------------------------------------
     # Snapshots
     # ---------------------------------------------------------------------------

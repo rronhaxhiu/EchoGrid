@@ -26,6 +26,10 @@ from .schemas import (
     ErrorResponse,
     EventResponse,
     ExportResponse,
+    GenerateEventRequest,
+    GenerateEventResponse,
+    InterpretRunRequest,
+    InterpretRunResponse,
     RunListItem,
     RunMetaResponse,
     RunTicksRequest,
@@ -235,6 +239,72 @@ async def add_event(
 async def list_events(run_id: str, svc: SimulationService = Depends(get_service)):
     """List all events for a run."""
     result = await svc.list_events(run_id)
+    if result is None:
+        raise _not_found(run_id)
+    return result
+
+
+@router.post(
+    "/runs/{run_id}/events/generate",
+    response_model=GenerateEventResponse,
+    status_code=201,
+    tags=["Events"],
+)
+async def generate_event(
+    run_id: str,
+    body: GenerateEventRequest,
+    svc: SimulationService = Depends(get_service),
+):
+    """
+    Translate a plain-English scenario into a simulation event using an LLM.
+
+    The generated event is returned for review — it is NOT automatically
+    scheduled. POST the returned event to /events to schedule it.
+    """
+    try:
+        result = await svc.generate_event(run_id=run_id, prompt=body.prompt)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    if result is None:
+        raise _not_found(run_id)
+    return GenerateEventResponse(
+        event=AddEventRequest(**result["event"]),
+        llm_raw=result["llm_raw"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Interpretation
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/runs/{run_id}/interpret",
+    response_model=InterpretRunResponse,
+    tags=["Interpretation"],
+)
+async def interpret_run(
+    run_id: str,
+    body: InterpretRunRequest = InterpretRunRequest(),
+    svc: SimulationService = Depends(get_service),
+):
+    """
+    Analyze the current world state using an LLM.
+
+    Returns a narrative summary, anomaly flags, and optional corrective
+    event suggestions. Set `compare_from_tick` to get a delta-based
+    analysis of what changed since that tick.
+    """
+    try:
+        result = await svc.interpret_run(
+            run_id=run_id,
+            compare_from_tick=body.compare_from_tick,
+            include_suggestions=body.include_suggestions,
+            max_anomalies=body.max_anomalies,
+            max_suggestions=body.max_suggestions,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     if result is None:
         raise _not_found(run_id)
     return result
