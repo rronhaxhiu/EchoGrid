@@ -66,14 +66,15 @@ export function TileEditor({ q, r, variables, onClose }: TileEditorProps) {
     setErrorMsg("");
 
     try {
-      await api.events.add(activeRun.id, {
+      const result = await api.events.add(activeRun.id, {
         tick: scheduledTick,
         name: eventName.trim(),
         delta_map: deltaMap,
         target_tiles: [[q, r]],
         source: "user",
       });
-      setLastScheduledTick(scheduledTick);
+      // Use the tick confirmed by the backend (it may have been bumped forward)
+      setLastScheduledTick(result.tick);
       setSubmitState("success");
       setEventName("");
       setDeltaMap({});

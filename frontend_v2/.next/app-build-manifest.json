@@ -16,11 +16,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/world/page.js"
     ],
-    "/runs/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/runs/page.js"
-    ],
     "/settings/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",

@@ -39,6 +39,10 @@ class CreateRunRequest(BaseModel):
     diff_snapshots: bool = Field(
         True, description="Store diff snapshots (smaller) instead of full per tick."
     )
+    influence_config: Optional[Dict[str, Dict[str, float]]] = Field(
+        None,
+        description="Influence matrix to apply from tick 0. Falls back to built-in defaults if omitted.",
+    )
 
 
 class RunMetaResponse(BaseModel):
