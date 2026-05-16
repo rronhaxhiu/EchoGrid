@@ -50,6 +50,7 @@ class SimulationService:
         spatial_decay: float = 0.3,
         diff_snapshots: bool = True,
         influence_config: Optional[Dict[str, Dict[str, float]]] = None,
+        csv_rows: Optional[List[List[float]]] = None,
     ) -> Dict[str, Any]:
         run = SimulationRun.new(
             seed=seed,
@@ -64,6 +65,7 @@ class SimulationService:
             hex_radius=hex_radius,
             variables=variables,
             global_initial_values=global_initial_values,
+            csv_rows=csv_rows,
         )
 
         # Build influence config: use supplied config, or fall back to defaults

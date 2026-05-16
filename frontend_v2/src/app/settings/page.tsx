@@ -104,7 +104,7 @@ export default function SettingsPage() {
           <Lock className="w-4 h-4 text-red-500 dark:text-red-400 shrink-0" />
           <p className="text-sm text-red-700 dark:text-red-400">
             The influence matrix is <strong>locked</strong> while run{" "}
-            <span className="font-mono font-bold">{activeRun!.id.slice(0, 8)}…</span>{" "}
+            <span className="font-mono font-bold">{activeRun.id.slice(0, 8)}…</span>{" "}
             is active. Stop the simulation to make changes.
           </p>
         </div>
@@ -210,8 +210,8 @@ export default function SettingsPage() {
                                 isPositive
                                   ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800"
                                   : isNegative
-                                  ? "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"
-                                  : "bg-muted/30 border-border hover:border-violet-200 dark:hover:border-violet-800"
+                                    ? "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"
+                                    : "bg-muted/30 border-border hover:border-violet-200 dark:hover:border-violet-800"
                               )}
                             >
                               <input
@@ -227,8 +227,8 @@ export default function SettingsPage() {
                                   isPositive
                                     ? "text-emerald-700 dark:text-emerald-400"
                                     : isNegative
-                                    ? "text-red-700 dark:text-red-400"
-                                    : "text-muted-foreground"
+                                      ? "text-red-700 dark:text-red-400"
+                                      : "text-muted-foreground"
                                 )}
                               />
 
@@ -299,10 +299,10 @@ export default function SettingsPage() {
               {!variables.some((from) =>
                 variables.some((to) => to !== from && Math.abs(draft[from]?.[to] ?? 0) > 0.001)
               ) && (
-                <span className="text-xs text-muted-foreground">
-                  No active influences — all coefficients are zero.
-                </span>
-              )}
+                  <span className="text-xs text-muted-foreground">
+                    No active influences — all coefficients are zero.
+                  </span>
+                )}
             </div>
           </div>
         </CardContent>

@@ -12,6 +12,8 @@ export interface CreateRunRequest {
   spatial_decay: number;
   diff_snapshots: boolean;
   influence_config?: Record<string, Record<string, number>>;
+  /** CSV rows: each inner array is one row, columns map to variables in order. */
+  csv_rows?: number[][];
 }
 
 export interface RunMeta {

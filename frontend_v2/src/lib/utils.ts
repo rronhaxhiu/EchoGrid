@@ -76,15 +76,24 @@ export const VARIABLE_META: Record<
   },
 };
 
-export function getVariableMeta(name: string) {
-  return (
+export function getVariableMeta(
+  name: string,
+  config?: { display_name?: string; color?: string }
+) {
+  const base =
     VARIABLE_META[name] ?? {
       label: name,
       icon: "📊",
       color: "#8b5cf6",
       darkColor: "#a78bfa",
-    }
-  );
+    };
+  const color = config?.color ?? base.color;
+  return {
+    ...base,
+    label: config?.display_name?.trim() || base.label,
+    color,
+    darkColor: color,
+  };
 }
 
 /** Map a normalized value (0-1) to a hex color for the globe */

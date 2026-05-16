@@ -103,6 +103,7 @@ async def create_run(body: CreateRunRequest, svc: SimulationService = Depends(ge
         spatial_decay=body.spatial_decay,
         diff_snapshots=body.diff_snapshots,
         influence_config=body.influence_config,
+        csv_rows=body.csv_rows,
     )
     return result
 
