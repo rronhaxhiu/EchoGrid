@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Hexasphere } from "hexasphere";
@@ -73,15 +73,24 @@ function makeLineLoop(
     color,
     transparent: true,
     opacity,
-    blending: THREE.AdditiveBlending,
+    // NormalBlending so dark colours actually paint over the fill below.
+    // AdditiveBlending of near-black contributes nothing.
+    blending: THREE.NormalBlending,
     depthWrite: false,
+    depthTest: false,
   });
-  return { line: new THREE.LineLoop(geo, mat), mat };
+  const line = new THREE.LineLoop(geo, mat);
+  // Render after fill meshes (renderOrder 0) so the border always sits on top
+  line.renderOrder = 1;
+  return { line, mat };
 }
 
 interface TileObj {
   line: THREE.LineLoop;
   mat: THREE.LineBasicMaterial;
+  /** Filled polygon mesh that shows the variable color. */
+  fill: THREE.Mesh;
+  fillMat: THREE.MeshBasicMaterial;
   targetColor: THREE.Color;
   /** Normalised Y of the tile center (−1 … +1) — used for the latitude ring. */
   normY: number;
@@ -151,6 +160,14 @@ export function HexGlobe({
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
 
+  // Keep latest props accessible inside the long-lived animation loop closure.
+  // useEffect deps are unreliable for this — refs are the correct React/Three.js pattern.
+  const selectedVariableRef = useRef(selectedVariable);
+  const tilesRef = useRef(tiles);
+  // Track what was last rendered so we only recompute when something changed.
+  const lastColorVariableRef = useRef("");
+  const lastColorTilesRef = useRef<typeof tiles | null>(null);
+
   useEffect(() => {
     isAnimatingRef.current = isAnimating;
   }, [isAnimating]);
@@ -163,20 +180,13 @@ export function HexGlobe({
     selectedTileKeyRef.current = selectedTileKey;
   }, [selectedTileKey]);
 
-  const getMinMax = useCallback(
-    (variable: string): [number, number] => {
-      let min = Infinity, max = -Infinity;
-      for (const vars of Object.values(tiles)) {
-        const v = vars[variable];
-        if (v !== undefined) {
-          if (v < min) min = v;
-          if (v > max) max = v;
-        }
-      }
-      return min === Infinity ? [0, 100] : min === max ? [min - 1, max + 1] : [min, max];
-    },
-    [tiles]
-  );
+  useEffect(() => {
+    selectedVariableRef.current = selectedVariable;
+  }, [selectedVariable]);
+
+  useEffect(() => {
+    tilesRef.current = tiles;
+  }, [tiles]);
 
   // ─── Init Three.js scene (once) ───────────────────────────────────────────
   useEffect(() => {
@@ -272,17 +282,53 @@ export function HexGlobe({
       }
 
       if (tileObjsRef.current.size > 0) {
+        // ── Recompute target colors whenever variable or tile data changes ──
+        // This runs inside the animation loop (via refs) so it's never stale
+        // regardless of React effect scheduling or closure captures.
+        const curVariable = selectedVariableRef.current;
+        const curTiles = tilesRef.current;
+        if (
+          curVariable !== lastColorVariableRef.current ||
+          curTiles !== lastColorTilesRef.current
+        ) {
+          lastColorVariableRef.current = curVariable;
+          lastColorTilesRef.current = curTiles;
+
+          // Compute min/max for the active variable
+          let cMin = Infinity, cMax = -Infinity;
+          for (const vars of Object.values(curTiles)) {
+            const v = (vars as Record<string, number>)[curVariable];
+            if (v !== undefined) {
+              if (v < cMin) cMin = v;
+              if (v > cMax) cMax = v;
+            }
+          }
+          if (cMin === Infinity) { cMin = 0; cMax = 100; }
+          else if (cMin === cMax) { cMin -= 1; cMax += 1; }
+
+          tileObjsRef.current.forEach((obj, key) => {
+            const vars = curTiles[key] ?? {};
+            const val = vars[curVariable] ?? 0;
+            const t = normalizeValue(val, cMin, cMax);
+            const newColor = getColor(t, curVariable);
+            obj.targetColor.copy(newColor);
+            // Apply immediately so the change is visible on the very next frame
+            obj.fillMat.color.copy(newColor);
+          });
+        }
+
         // Ring phase: full cycle every ~18 s
         const ringPhase = time * 0.00035;
         const selKey = selectedTileKeyRef.current;
-        tileObjsRef.current.forEach(({ mat, targetColor, normY }, key) => {
-          mat.color.lerp(targetColor, 0.07);
+        tileObjsRef.current.forEach(({ fillMat, targetColor, normY }, key) => {
+          // Smoothly chase the target color (live tick updates)
+          fillMat.color.lerp(targetColor, 0.07);
+
           if (selKey && key === selKey) {
-            mat.opacity = 1.0;
+            fillMat.opacity = 0.65;
           } else {
-            // Latitude ring: gentle brightness band, range 0.72 → 1.0
             const wave = 0.5 + 0.5 * Math.sin(normY * Math.PI + ringPhase);
-            mat.opacity = 0.72 + 0.28 * wave;
+            fillMat.opacity = 0.30 + 0.20 * wave;
           }
         });
       }
@@ -336,21 +382,35 @@ export function HexGlobe({
     const n = keys.length;
     const subdivisions = subdivisionsFor(n);
     const hexsphere = getHexasphere(subdivisions, SPHERE_RADIUS);
-    const [min, max] = getMinMax(selectedVariable);
+
+    // Compute initial colors using the current variable snapshot.
+    // (Colors are kept fresh in the animation loop via refs; this just sets
+    //  the starting state so tiles aren't black on first render.)
+    const initVariable = selectedVariableRef.current;
+    const initTiles = tilesRef.current;
+    let iMin = Infinity, iMax = -Infinity;
+    for (const vars of Object.values(initTiles)) {
+      const v = (vars as Record<string, number>)[initVariable];
+      if (v !== undefined) {
+        if (v < iMin) iMin = v;
+        if (v > iMax) iMax = v;
+      }
+    }
+    if (iMin === Infinity) { iMin = 0; iMax = 100; }
+    else if (iMin === iMax) { iMin -= 1; iMax += 1; }
+    // Force next animation-loop color pass by resetting the cache keys
+    lastColorVariableRef.current = "";
+    lastColorTilesRef.current = null;
+
     const sortedKeys = [...keys].sort();
 
     hexsphere.tiles.forEach((geoTile, i) => {
       const key = sortedKeys[i];
       const isData = key !== undefined;
-      const vars = isData ? tiles[key] : {};
-      const val = (vars as Record<string, number>)[selectedVariable] ?? 0;
-      const t = isData ? normalizeValue(val, min, max) : 0;
-      const color = isData ? getColor(t, selectedVariable) : GHOST_COLOR.clone();
-      const opacity = isData ? 0.85 : 0.4;
-
-      const { line, mat } = makeLineLoop(geoTile.boundary, color, opacity);
-      line.userData = { key: key ?? null };
-      layer.add(line);
+      const vars = isData ? initTiles[key] : {};
+      const val = (vars as Record<string, number>)[initVariable] ?? 0;
+      const t = isData ? normalizeValue(val, iMin, iMax) : 0;
+      const color = isData ? getColor(t, initVariable) : GHOST_COLOR.clone();
 
       if (isData) {
         // Tile center pushed to FILL_RADIUS — fan origin for fill / hit meshes
@@ -360,6 +420,26 @@ export function HexGlobe({
           geoTile.centerPoint.z,
         ).normalize().multiplyScalar(FILL_RADIUS);
 
+        // Dummy line so TileObj.line / mat fields remain populated (raycasting
+        // uses hitMesh, but the field is still referenced elsewhere).
+        const { line, mat } = makeLineLoop(geoTile.boundary, GHOST_COLOR, 0);
+        line.userData = { key };
+
+        const posAttr = line.geometry.attributes.position as THREE.BufferAttribute;
+
+        // Visible fill mesh — carries the variable color
+        const fillMat = new THREE.MeshBasicMaterial({
+          color: color.clone(),
+          transparent: true,
+          opacity: 0.25,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          depthTest: false,
+          side: THREE.FrontSide,
+        });
+        const fill = buildFanMesh(posAttr, center, fillMat);
+        layer.add(fill);
+
         // Invisible hit mesh so clicking anywhere inside the tile registers
         const hitMat = new THREE.MeshBasicMaterial({
           transparent: true,
@@ -367,28 +447,23 @@ export function HexGlobe({
           depthWrite: false,
           side: THREE.FrontSide,
         });
-        const posAttr = line.geometry.attributes.position as THREE.BufferAttribute;
         const hitMesh = buildFanMesh(posAttr, center, hitMat);
         hitMesh.userData = { key };
         layer.add(hitMesh);
 
         const normY = geoTile.centerPoint.y / SPHERE_RADIUS;
-        tileObjsRef.current.set(key, { line, mat, targetColor: color.clone(), normY, center, hitMesh });
+        tileObjsRef.current.set(key, { line, mat, fill, fillMat, targetColor: color.clone(), normY, center, hitMesh });
+      } else {
+        // Ghost tile — keep the dim outline so the sphere shows a grid at rest
+        const { line } = makeLineLoop(geoTile.boundary, GHOST_COLOR, 0.4);
+        layer.add(line);
       }
     });
-  }, [tiles, getMinMax, selectedVariable]);
-
-  // ─── Update colors without rebuilding geometry ────────────────────────────
-  useEffect(() => {
-    if (tileObjsRef.current.size === 0) return;
-    const [min, max] = getMinMax(selectedVariable);
-    tileObjsRef.current.forEach((obj, key) => {
-      const vars = tiles[key] ?? {};
-      const val = vars[selectedVariable] ?? 0;
-      const t = normalizeValue(val, min, max);
-      obj.targetColor.copy(getColor(t, selectedVariable));
-    });
-  }, [selectedVariable, tiles, getMinMax]);
+  // selectedVariable intentionally NOT in deps — color updates happen in the
+  // animation loop via refs, which is always fresh. This effect only rebuilds
+  // geometry when the set of tile keys changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiles]);
 
   // ─── Selected tile fill highlight ─────────────────────────────────────────
   useEffect(() => {

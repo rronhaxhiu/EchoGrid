@@ -1,55 +1,31 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Save, Info, RefreshCw, Minus, Plus, RotateCcw, Lock } from "lucide-react";
+import { useState } from "react";
+import { Save, Info, Minus, Plus, RotateCcw, Lock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { api } from "@/lib/api";
 import { getVariableMeta, cn, formatValue } from "@/lib/utils";
-import { useSimulationStore } from "@/store/simulationStore";
-
-// Local default influence matrix (when no run is active)
-const DEFAULT_INFLUENCE: Record<string, Record<string, number>> = {
-  health:   { economy: 0.1,  green: 0.05, mobility: 0.0  },
-  economy:  { health: 0.2,   green: -0.1, mobility: 0.15 },
-  green:    { health: 0.15,  economy: 0.0, mobility: 0.05 },
-  mobility: { economy: 0.2,  health: 0.05, green: -0.05  },
-};
+import { useSimulationStore, DEFAULT_INFLUENCE_MATRIX } from "@/store/simulationStore";
 
 export default function SettingsPage() {
-  const { activeRun } = useSimulationStore();
-  const isLocked = !!activeRun;
-  const [matrix, setMatrix] = useState<Record<string, Record<string, number>>>(DEFAULT_INFLUENCE);
-  const [variables, setVariables] = useState<string[]>(["health", "economy", "green", "mobility"]);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { activeRun, influenceMatrix, setInfluenceMatrix, variableConfigs } =
+    useSimulationStore();
 
-  // Load from active run if available
-  useEffect(() => {
-    if (activeRun) {
-      setVariables(activeRun.variables);
-      if (Object.keys(activeRun.influence_config).length > 0) {
-        setMatrix(activeRun.influence_config);
-      } else {
-        // Init empty matrix
-        const empty: Record<string, Record<string, number>> = {};
-        activeRun.variables.forEach((v) => {
-          empty[v] = {};
-          activeRun.variables.forEach((v2) => {
-            if (v !== v2) empty[v][v2] = 0;
-          });
-        });
-        setMatrix(empty);
-      }
-    }
-  }, [activeRun]);
+  const isLocked = !!activeRun;
+
+  // Work on a local draft so edits don't immediately mutate the store
+  const [draft, setDraft] = useState(() => structuredClone(influenceMatrix));
+  const [saved, setSaved] = useState(false);
+
+  // Derive variable list from active run (if running) or from configured vars
+  const variables = activeRun
+    ? activeRun.variables
+    : variableConfigs.filter((v) => v.enabled).map((v) => v.name);
 
   function updateCell(from: string, to: string, value: number) {
-    setMatrix((prev) => ({
+    setDraft((prev) => ({
       ...prev,
       [from]: { ...(prev[from] ?? {}), [to]: value },
     }));
@@ -57,46 +33,23 @@ export default function SettingsPage() {
   }
 
   function nudge(from: string, to: string, delta: number) {
-    const current = matrix[from]?.[to] ?? 0;
-    const next = Math.round((current + delta) * 100) / 100;
-    updateCell(from, to, next);
+    const current = draft[from]?.[to] ?? 0;
+    updateCell(from, to, Math.round((current + delta) * 100) / 100);
   }
 
   function resetCell(from: string, to: string) {
     updateCell(from, to, 0);
   }
 
-  async function handleSave() {
-    if (!activeRun) {
-      setError("No active simulation run. Start a simulation first.");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      // Save each non-zero cell
-      const pairs: Array<[string, string, number]> = [];
-      for (const [v1, targets] of Object.entries(matrix)) {
-        for (const [v2, coeff] of Object.entries(targets)) {
-          if (v1 !== v2) pairs.push([v1, v2, coeff]);
-        }
-      }
-      await Promise.all(
-        pairs.map(([v1, v2, coeff]) =>
-          api.influence.set(activeRun.id, { v1, v2, coefficient: coeff })
-        )
-      );
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
+  function handleSave() {
+    setInfluenceMatrix(structuredClone(draft));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
   }
 
   function resetToDefaults() {
-    setMatrix(DEFAULT_INFLUENCE);
+    const fresh = structuredClone(DEFAULT_INFLUENCE_MATRIX);
+    setDraft(fresh);
     setSaved(false);
   }
 
@@ -124,16 +77,17 @@ export default function SettingsPage() {
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={saving || isLocked}
+            disabled={isLocked}
             className={cn(
               "gap-1.5 transition-all",
               saved && "bg-emerald-500 hover:bg-emerald-600"
             )}
           >
-            {saving ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : saved ? (
-              "✓ Saved"
+            {saved ? (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                Saved
+              </>
             ) : (
               <>
                 <Save className="w-3.5 h-3.5" />
@@ -144,43 +98,34 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Run state notice */}
-      {activeRun ? (
+      {/* Status banner */}
+      {isLocked ? (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/10 dark:border-red-800/50 p-4 flex items-center gap-3 animate-fade-in">
           <Lock className="w-4 h-4 text-red-500 dark:text-red-400 shrink-0" />
           <p className="text-sm text-red-700 dark:text-red-400">
             The influence matrix is <strong>locked</strong> while run{" "}
-            <span className="font-mono font-bold">{activeRun.id.slice(0, 8)}...</span>
-            {" "}is active. Stop the simulation to make changes.
+            <span className="font-mono font-bold">{activeRun.id.slice(0, 8)}…</span>{" "}
+            is active. Stop the simulation to make changes.
           </p>
         </div>
       ) : (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-800/50 p-4 flex items-center gap-3 animate-fade-in">
-          <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-          <p className="text-sm text-amber-700 dark:text-amber-400">
-            No active simulation. Start one from the{" "}
-            <a href="/world" className="underline font-medium">World page</a>{" "}
-            to apply these settings to a run.
+        <div className="mb-6 rounded-xl border border-violet-200 bg-violet-50 dark:bg-violet-900/10 dark:border-violet-800/50 p-4 flex items-center gap-3 animate-fade-in">
+          <Info className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0" />
+          <p className="text-sm text-violet-700 dark:text-violet-400">
+            The influence matrix is a <strong>global config</strong> — edit it here and save.
+            Changes apply the next time you start a simulation.
           </p>
-        </div>
-      )}
-
-      {/* Error */}
-      {error && (
-        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/10 dark:border-red-800/50 p-4 animate-fade-in">
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
         </div>
       )}
 
       {/* Influence Matrix */}
       <Card className={cn("animate-fade-in", isLocked && "opacity-60 pointer-events-none select-none")}>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Influence Matrix
-          </CardTitle>
+          <CardTitle>Influence Matrix</CardTitle>
           <CardDescription>
             Each cell defines how a change in the <strong>row variable</strong> affects the{" "}
-            <strong>column variable</strong> within the same tile.
+            <strong>column variable</strong> within the same tile — and cascades to
+            neighbouring tiles via the spatial decay factor.
             Positive values amplify, negative values dampen.
           </CardDescription>
         </CardHeader>
@@ -209,7 +154,6 @@ export default function SettingsPage() {
             <table className="w-full">
               <thead>
                 <tr>
-                  {/* Top-left corner */}
                   <th className="w-32 pb-3">
                     <div className="text-xs text-muted-foreground text-left">
                       From ↓ / To →
@@ -235,7 +179,6 @@ export default function SettingsPage() {
                   const rowMeta = getVariableMeta(row);
                   return (
                     <tr key={row} className="group">
-                      {/* Row header */}
                       <td className="pr-4 py-2">
                         <div className="flex items-center gap-2">
                           <span className="text-lg">{rowMeta.icon}</span>
@@ -243,10 +186,9 @@ export default function SettingsPage() {
                         </div>
                       </td>
 
-                      {/* Cells */}
                       {variables.map((col) => {
                         const isDiagonal = row === col;
-                        const value = matrix[row]?.[col] ?? 0;
+                        const value = draft[row]?.[col] ?? 0;
                         const isPositive = value > 0.001;
                         const isNegative = value < -0.001;
 
@@ -272,7 +214,6 @@ export default function SettingsPage() {
                                   : "bg-muted/30 border-border hover:border-violet-200 dark:hover:border-violet-800"
                               )}
                             >
-                              {/* Value input */}
                               <input
                                 type="number"
                                 step="0.05"
@@ -291,7 +232,6 @@ export default function SettingsPage() {
                                 )}
                               />
 
-                              {/* Nudge buttons */}
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   disabled={isLocked}
@@ -326,7 +266,7 @@ export default function SettingsPage() {
             </table>
           </div>
 
-          {/* Summary */}
+          {/* Active influences summary */}
           <div className="mt-6 p-4 rounded-xl bg-muted/50 border border-border">
             <h4 className="text-sm font-medium mb-3">Active influences</h4>
             <div className="flex flex-wrap gap-2">
@@ -334,7 +274,7 @@ export default function SettingsPage() {
                 variables
                   .filter((to) => to !== from)
                   .map((to) => {
-                    const coeff = matrix[from]?.[to] ?? 0;
+                    const coeff = draft[from]?.[to] ?? 0;
                     if (Math.abs(coeff) < 0.001) return null;
                     const fromMeta = getVariableMeta(from);
                     const toMeta = getVariableMeta(to);
@@ -353,7 +293,7 @@ export default function SettingsPage() {
                   })
               ).filter(Boolean)}
               {!variables.some((from) =>
-                variables.some((to) => to !== from && Math.abs(matrix[from]?.[to] ?? 0) > 0.001)
+                variables.some((to) => to !== from && Math.abs(draft[from]?.[to] ?? 0) > 0.001)
               ) && (
                 <span className="text-xs text-muted-foreground">
                   No active influences — all coefficients are zero.
@@ -372,11 +312,16 @@ export default function SettingsPage() {
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
                 The influence matrix defines cross-variable effects <em>within a single tile</em>.
-                When a variable changes by Δ, each downstream variable receives Δ × coefficient.
+                When a variable changes by Δ on a tile, each downstream variable on that tile receives Δ × coefficient.
               </p>
               <p>
-                Spatial propagation (configured per run) separately controls how changes spread to
-                neighboring tiles, decaying by the spatial_decay factor per hop.
+                Effects then cascade outward: changed tiles spread their deltas to hex neighbours
+                (attenuated by the spatial decay factor), and each neighbour tile re-applies the influence
+                matrix to those incoming deltas — repeating until the signal is too small to matter.
+              </p>
+              <p>
+                Additionally, every tick the simulation applies <em>continuous ambient dynamics</em>:
+                natural decay toward equilibrium, ongoing cross-variable coupling, and gradual spatial diffusion.
               </p>
             </div>
           </div>

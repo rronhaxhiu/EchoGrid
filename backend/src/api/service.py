@@ -21,6 +21,15 @@ from ..domain.variable import Variable
 from ..infrastructure.repositories import AbstractRunRepository, AbstractVariableRepository
 from ..infrastructure.serialization import RunSerializer
 
+# Default influence relationships applied when no explicit config is provided.
+# These give the simulation meaningful cross-variable dynamics out of the box.
+_DEFAULT_INFLUENCE: Dict[str, Dict[str, float]] = {
+    "health":   {"economy": 0.10, "green":    0.05},
+    "economy":  {"health":  0.20, "green":   -0.10, "mobility": 0.15},
+    "green":    {"health":  0.15, "mobility": 0.05},
+    "mobility": {"economy": 0.20, "health":   0.05, "green":   -0.05},
+}
+
 
 class SimulationService:
     def __init__(self, repository: AbstractRunRepository) -> None:
@@ -40,6 +49,7 @@ class SimulationService:
         global_initial_values: Dict[str, float],
         spatial_decay: float = 0.3,
         diff_snapshots: bool = True,
+        influence_config: Optional[Dict[str, Dict[str, float]]] = None,
     ) -> Dict[str, Any]:
         run = SimulationRun.new(
             seed=seed,
@@ -56,7 +66,24 @@ class SimulationService:
             global_initial_values=global_initial_values,
         )
 
-        run.influence = InfluenceMatrix()
+        # Build influence config: use supplied config, or fall back to defaults
+        # filtered to variables that are actually in this run.
+        run_vars = set(variables)
+        if influence_config:
+            cfg = {
+                v1: {v2: c for v2, c in effects.items() if v2 in run_vars}
+                for v1, effects in influence_config.items()
+                if v1 in run_vars
+            }
+        else:
+            cfg = {
+                v1: {v2: c for v2, c in effects.items() if v2 in run_vars}
+                for v1, effects in _DEFAULT_INFLUENCE.items()
+                if v1 in run_vars
+            }
+
+        run.influence = InfluenceMatrix.from_dict(cfg)
+        run.influence_config = cfg
 
         engine = SimulationEngine(run=run, diff_snapshots=diff_snapshots)
         # Capture tick-0 full snapshot
@@ -191,8 +218,15 @@ class SimulationService:
             return None
 
         coords = [tuple(t) for t in target_tiles]
+
+        # Guard against stale frontend ticks: if the requested tick has already
+        # been processed (or is being processed right now), bump to current + 1
+        # so the event always fires on the very next tick instead of being
+        # silently dropped.
+        effective_tick = max(tick, engine.run.current_tick + 1)
+
         event = SimEvent(
-            tick=tick,
+            tick=effective_tick,
             name=name,
             delta_map=delta_map,
             target_tiles=coords,  # type: ignore[arg-type]
@@ -204,7 +238,7 @@ class SimulationService:
         return {
             "id": event.id,
             "run_id": run_id,
-            "tick": event.tick,
+            "tick": effective_tick,
             "name": event.name,
             "delta_map": event.delta_map,
             "target_tiles": [list(c) for c in event.target_tiles],
