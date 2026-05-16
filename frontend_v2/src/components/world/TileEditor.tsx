@@ -109,7 +109,7 @@ function ApplyEventModal({
         aria-label="Close"
       />
       <div
-        className="relative w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl animate-fade-in overflow-hidden"
+        className="relative w-full max-w-md bg-[#0b0914] border border-border rounded-2xl shadow-2xl animate-fade-in overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
@@ -161,7 +161,7 @@ function ApplyEventModal({
               return (
                 <div
                   key={name}
-                  className="rounded-xl border border-border bg-muted/20 p-3 space-y-2"
+                  className="rounded-xl border border-border bg-[#12101c] p-3 space-y-2"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium flex items-center gap-2">
@@ -225,7 +225,7 @@ function ApplyEventModal({
           )}
         </div>
 
-        <div className="flex items-center gap-2 px-5 py-4 border-t border-border bg-muted/30">
+        <div className="flex items-center gap-2 px-5 py-4 border-t border-border bg-[#12101c]">
           <Button variant="outline" className="flex-1" onClick={onClose} disabled={isBusy}>
             Cancel
           </Button>
