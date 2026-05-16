@@ -392,6 +392,12 @@ class SimulationService:
             return None
         return RunSerializer.export_run(run)
 
+    async def export_run_xlsx(self, run_id: str) -> Optional[bytes]:
+        run = await self._load_run(run_id)
+        if run is None:
+            return None
+        return RunSerializer.export_run_xlsx(run)
+
     async def replay_run(self, run_id: str) -> Optional[Dict[str, Any]]:
         """
         Reconstruct the run from seed + events (full deterministic replay).

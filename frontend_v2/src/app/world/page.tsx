@@ -2,12 +2,15 @@
 
 import dynamic from "next/dynamic";
 import { useState } from "react";
-import { Pause, Play, CheckSquare } from "lucide-react";
+import { Pause, Play, CheckSquare, Globe2 } from "lucide-react";
 import { WorldControlPanel } from "@/components/world/WorldControlPanel";
 import { GlobalMetrics } from "@/components/world/GlobalMetrics";
 import { TileEditor } from "@/components/world/TileEditor";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useSimulationStore } from "@/store/simulationStore";
 import { cn } from "@/lib/utils";
+import type { GlobeSurfaceMode } from "@/components/globe/globeSurface";
 
 // Three.js requires client-side only
 const HexGlobe = dynamic(
@@ -38,6 +41,7 @@ export default function WorldPage() {
 
   const [tileInfo, setTileInfo] = useState<TileInfo | null>(null);
   const [autoRotate, setAutoRotate] = useState(true);
+  const [globeSurface, setGlobeSurface] = useState<GlobeSurfaceMode>("hex");
   const isActive = status === "running" || status === "paused";
   const isStopped = status === "stopped";
 
@@ -58,6 +62,7 @@ export default function WorldPage() {
           hexRadius={hexRadius}
           isAnimating={status === "running"}
           autoRotate={autoRotate}
+          surfaceMode={globeSurface}
           selectedTileKey={tileInfo ? `${tileInfo.q},${tileInfo.r}` : null}
           onTileClick={(q, r, variables) => setTileInfo({ q, r, variables })}
         />
@@ -149,8 +154,23 @@ export default function WorldPage() {
         <WorldControlPanel />
       </div>
 
-      {/* Auto-rotate toggle — bottom-right corner */}
-      <div className="absolute bottom-8 right-6 z-20">
+      {/* View controls — bottom-right corner */}
+      <div className="absolute bottom-8 right-6 z-20 flex flex-col items-end gap-3">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-xl border border-white/10 bg-black/50 text-white/70 shadow-md">
+          <Globe2 className="w-3.5 h-3.5 text-cyan-300" />
+          <Label htmlFor="earth-surface" className="text-xs text-white/70">
+            Earth texture
+          </Label>
+          <Switch
+            id="earth-surface"
+            checked={globeSurface === "earth"}
+            onCheckedChange={(checked) =>
+              setGlobeSurface(checked ? "earth" : "hex")
+            }
+            className="h-5 w-9 data-[state=checked]:bg-cyan-500 data-[state=unchecked]:bg-white/15"
+          />
+        </div>
+
         <button
           onClick={() => setAutoRotate((v) => !v)}
           title={autoRotate ? "Pause rotation" : "Resume rotation"}

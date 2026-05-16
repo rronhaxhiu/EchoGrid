@@ -6,7 +6,7 @@ Thin wrappers around SimulationService — no business logic here.
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
@@ -364,6 +364,20 @@ async def export_run(run_id: str, svc: SimulationService = Depends(get_service))
     if result is None:
         raise _not_found(run_id)
     return result
+
+
+@router.get("/runs/{run_id}/export.xlsx", tags=["Export"])
+async def export_run_xlsx(run_id: str, svc: SimulationService = Depends(get_service)):
+    """Export full run (world state + events + snapshots) as an Excel workbook."""
+    result = await svc.export_run_xlsx(run_id)
+    if result is None:
+        raise _not_found(run_id)
+    short_run_id = run_id[:8]
+    return Response(
+        content=result,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="run-{short_run_id}.xlsx"'},
+    )
 
 
 @router.post("/runs/{run_id}/replay", tags=["Export"])

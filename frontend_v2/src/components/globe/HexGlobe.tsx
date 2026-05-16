@@ -5,6 +5,10 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Hexasphere } from "hexasphere";
 import { normalizeValue } from "@/lib/utils";
+import {
+  getGlobeSurfaceMaterial,
+  type GlobeSurfaceMode,
+} from "@/components/globe/globeSurface";
 
 /**
  * Geodesic hex globe using arscan/hexasphere.js.
@@ -131,6 +135,7 @@ interface HexGlobeProps {
   hexRadius: number;
   isAnimating: boolean;
   autoRotate?: boolean;
+  surfaceMode?: GlobeSurfaceMode;
   selectedTileKey?: string | null;
   onTileClick?: (q: number, r: number, variables: Record<string, number>) => void;
 }
@@ -141,6 +146,7 @@ export function HexGlobe({
   hexRadius,
   isAnimating,
   autoRotate = true,
+  surfaceMode = "hex",
   selectedTileKey = null,
   onTileClick,
 }: HexGlobeProps) {
@@ -149,6 +155,7 @@ export function HexGlobe({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const globeGroupRef = useRef<THREE.Group | null>(null);
+  const globeSurfaceRef = useRef<THREE.Mesh | null>(null);
   const tileLayerRef = useRef<THREE.Group | null>(null);
   const tileObjsRef = useRef<Map<string, TileObj>>(new Map());
   const frameRef = useRef<number>(0);
@@ -221,13 +228,13 @@ export function HexGlobe({
     scene.add(globeGroup);
     globeGroupRef.current = globeGroup;
 
-    // Opaque dark planet body — tiles sit on top via depth test
-    globeGroup.add(
-      new THREE.Mesh(
-        new THREE.SphereGeometry(SPHERE_RADIUS - 0.05, 48, 48),
-        new THREE.MeshBasicMaterial({ color: 0x05030e })
-      )
+    // Planet body — the material is swappable so the hex tile layer can stay intact.
+    const globeSurface = new THREE.Mesh(
+      new THREE.SphereGeometry(SPHERE_RADIUS - 0.05, 96, 64),
+      getGlobeSurfaceMaterial(surfaceMode, renderer.capabilities.getMaxAnisotropy()),
     );
+    globeGroup.add(globeSurface);
+    globeSurfaceRef.current = globeSurface;
 
     // Atmospheric glow
     globeGroup.add(
@@ -360,6 +367,18 @@ export function HexGlobe({
         container.removeChild(renderer.domElement);
     };
   }, []);
+
+  // ─── Swap base globe surface without rebuilding hex tiles ────────────────
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    const surface = globeSurfaceRef.current;
+    if (!renderer || !surface) return;
+
+    surface.material = getGlobeSurfaceMaterial(
+      surfaceMode,
+      renderer.capabilities.getMaxAnisotropy(),
+    );
+  }, [surfaceMode]);
 
   // ─── Rebuild tile geometry when tile set changes ───────────────────────────
   useEffect(() => {

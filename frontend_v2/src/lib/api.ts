@@ -33,6 +33,17 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+async function requestBlob(path: string, options?: RequestInit): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}${path}`, options);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const detail =
+      typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.blob();
+}
+
 // Runs
 export const api = {
   runs: {
@@ -120,6 +131,8 @@ export const api = {
   export: {
     run: (runId: string) =>
       request<Record<string, unknown>>(`/runs/${runId}/export`),
+    runExcel: (runId: string) =>
+      requestBlob(`/runs/${runId}/export.xlsx`),
     replay: (runId: string) =>
       request<Record<string, unknown>>(`/runs/${runId}/replay`, {
         method: "POST",

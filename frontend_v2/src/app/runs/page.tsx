@@ -49,19 +49,19 @@ export default function RunsPage() {
 
   async function handleExport(runId: string) {
     setExporting(runId);
+    setError(null);
     try {
-      const data = await api.export.run(runId);
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const blob = await api.export.runExcel(runId);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `run-${runId}.json`;
+      a.download = `run-${runId.slice(0, 8)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error("Failed to export run:", e);
+      setError(e instanceof Error ? e.message : "Failed to export run");
     } finally {
       setExporting(null);
     }
@@ -226,7 +226,7 @@ function RunCard({
             onClick={onExport}
             disabled={isExporting}
             className="gap-1.5 text-xs opacity-70 hover:opacity-100 transition-opacity"
-            title="Export run data (integration pending)"
+            title="Export run data as Excel"
           >
             {isExporting ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
