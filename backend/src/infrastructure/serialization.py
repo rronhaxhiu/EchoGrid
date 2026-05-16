@@ -23,6 +23,13 @@ class RunSerializer:
         Rebuild a SimulationRun from a DB model + event list.
         Uses stored current_world_state for fast resumption (no replay needed).
         """
+        current_tick = model.current_tick
+        # Re-queue any event whose tick is strictly in the future so it fires
+        # correctly when this reconstructed engine runs its next tick.  Without
+        # this, Postgres-backed services (new instance per request) would load
+        # an empty pending_events list and silently drop user-injected events.
+        pending = [e for e in events if e.tick > current_tick]
+
         run = SimulationRun(
             id=model.id,
             seed=model.seed,
@@ -31,8 +38,9 @@ class RunSerializer:
             hex_radius=model.hex_radius,
             spatial_decay=float(model.spatial_decay),
             influence_config=dict(model.influence_config),
-            current_tick=model.current_tick,
+            current_tick=current_tick,
             event_log=list(events),
+            pending_events=pending,
             created_at=model.created_at.isoformat() if model.created_at else None,
         )
 

@@ -11,6 +11,7 @@ export interface CreateRunRequest {
   variables: VariableInput[];
   spatial_decay: number;
   diff_snapshots: boolean;
+  influence_config?: Record<string, Record<string, number>>;
 }
 
 export interface RunMeta {
