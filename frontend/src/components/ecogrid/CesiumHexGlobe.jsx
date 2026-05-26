@@ -142,10 +142,14 @@ export function CesiumHexGlobe({
 
         cesiumRef.current = Cesium;
 
+        const creditContainer = document.createElement("div");
+        creditContainer.style.display = "none";
+
         const viewer = new Cesium.Viewer(element, {
           animation: false,
           baseLayer: false,
           baseLayerPicker: false,
+          creditContainer,
           fullscreenButton: false,
           geocoder: false,
           homeButton: true,

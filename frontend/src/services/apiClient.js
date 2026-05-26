@@ -1,9 +1,14 @@
 const defaultBaseUrl = "http://localhost:8000";
 
-export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || defaultBaseUrl;
+export const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || defaultBaseUrl;
 
 export async function apiRequest(path, options = {}) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
+    signal:
+      options.signal ??
+      (typeof AbortSignal !== "undefined" && AbortSignal.timeout
+        ? AbortSignal.timeout(30_000)
+        : undefined),
     headers: {
       "Content-Type": "application/json",
       ...options.headers,

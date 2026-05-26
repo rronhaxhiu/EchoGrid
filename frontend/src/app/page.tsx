@@ -1,9 +1,5 @@
-import { EchoGridDashboard } from "@/components/echo-grid-dashboard";
+import { LandingPage } from "@/pages/LandingPage";
 
 export default function Home() {
-  return (
-    <main className="flex min-h-svh flex-1 flex-col">
-      <EchoGridDashboard />
-    </main>
-  );
+  return <LandingPage />;
 }
